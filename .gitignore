@@ -1,0 +1,14 @@
+venv
+.bin
+.cache
+node_modules
+build
+*.bsp
+*.bpc
+*.tf
+*.tpc
+*.log
+__pycache__
+cspice/
+*.so
+*.o
