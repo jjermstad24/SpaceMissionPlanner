@@ -1,0 +1,2 @@
+[console_scripts]
+smp-gui = spacemissionplanner.gui.app:main

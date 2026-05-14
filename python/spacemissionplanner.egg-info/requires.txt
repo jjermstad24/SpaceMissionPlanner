@@ -1,0 +1,10 @@
+numpy>=1.24
+
+[dev]
+pytest>=7.4
+
+[gui]
+PySide6>=6.6
+
+[viz]
+pyvista>=0.43

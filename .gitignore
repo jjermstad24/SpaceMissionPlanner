@@ -1,4 +1,5 @@
 venv
+.venv
 .bin
 .cache
 node_modules
