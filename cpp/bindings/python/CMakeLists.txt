@@ -1,0 +1,1 @@
+message(STATUS "Python bindings - placeholder for now")

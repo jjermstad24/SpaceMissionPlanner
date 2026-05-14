@@ -1,0 +1,1 @@
+message(STATUS "Python support - placeholder for now")

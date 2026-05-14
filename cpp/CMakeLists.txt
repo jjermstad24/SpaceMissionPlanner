@@ -1,0 +1,5 @@
+add_subdirectory(core)
+add_subdirectory(astro)
+add_subdirectory(optimization)
+add_subdirectory(mission_graph)
+add_subdirectory(bindings)

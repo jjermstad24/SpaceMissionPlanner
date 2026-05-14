@@ -1,0 +1,3 @@
+add_library(mission_graph INTERFACE)
+target_include_directories(mission_graph INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(mission_graph INTERFACE core astro optimization)
