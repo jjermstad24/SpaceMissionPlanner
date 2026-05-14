@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "spacemissionplanner"
 version = "0.1.0"
 description = "Python frontend: notebooks, wrappers, visualization, and GUI for SpaceMissionPlanner"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
@@ -13,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6"]
-viz = ["pyvista>=0.43"]
+viz = ["pyvista>=0.43", "pyvistaqt>=0.11"]
 dev = ["pytest>=7.4"]
 
 [project.scripts]

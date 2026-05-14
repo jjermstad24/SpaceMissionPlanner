@@ -121,6 +121,8 @@ Responsibilities:
 
 The frontend must never contain mission physics.
 
+Trajectory and solar-system viewer planning (bodies + trajectory in a shared frame, phased roadmap): see `agent/VIEWER_PLAN.md`.
+
 ---
 
 # Python Bindings

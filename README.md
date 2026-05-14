@@ -1,18 +1,3 @@
-Metadata-Version: 2.4
-Name: spacemissionplanner
-Version: 0.1.0
-Summary: Python frontend: notebooks, wrappers, visualization, and GUI for SpaceMissionPlanner
-Requires-Python: >=3.10
-Description-Content-Type: text/markdown
-Requires-Dist: numpy>=1.24
-Provides-Extra: gui
-Requires-Dist: PySide6>=6.6; extra == "gui"
-Provides-Extra: viz
-Requires-Dist: pyvista>=0.43; extra == "viz"
-Requires-Dist: pyvistaqt>=0.11; extra == "viz"
-Provides-Extra: dev
-Requires-Dist: pytest>=7.4; extra == "dev"
-
 # Space Mission Planner
 
 Modular astrodynamics and mission design framework: C++ numerical core (Eigen, optional SPICE), mission graph, optimization, and a Python frontend (notebooks, Qt GUI, visualization). See `agent/ARCHITECTURE.md` and `agent/AGENTS.md` for design goals.
@@ -139,6 +124,8 @@ or:
 ```
 
 PySide6 is required; the entry point prints a short message if it is missing.
+
+The **3D viewer** (sidebar: “3D viewer”) uses **PyVista** embedded via **pyvistaqt**; both are listed in `requirements.txt`. It loads a **toy** solar-system demo until SPICE-backed ephemeris is wired (see `agent/VIEWER_PLAN.md`). Use the time slider to scrub the demo trajectory.
 
 ---
 
