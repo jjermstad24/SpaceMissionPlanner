@@ -19,6 +19,7 @@ class SolarSystemViewWidget(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._plotter = None
+        self._plotter_failed = False
         self._episode: Optional["ViewerEpisode"] = None
         self._time_index = 0
         self._missing = QLabel(
@@ -26,14 +27,21 @@ class SolarSystemViewWidget(QWidget):
             "Install with: pip install pyvista pyvistaqt"
         )
         self._missing.setWordWrap(True)
-        self._try_create_plotter()
+        # Defer QtInteractor / VTK until first episode (see SolarViewerPage.showEvent) so the
+        # top-level window exists — avoids X11 BadWindow on WSL/X11 when VTK configures too early.
 
-    def _try_create_plotter(self) -> None:
+    def has_plotter(self) -> bool:
+        return self._plotter is not None
+
+    def _ensure_plotter(self) -> None:
+        if self._plotter is not None or self._plotter_failed:
+            return
         try:
             import pyvista as pv
             from pyvistaqt import QtInteractor
         except ImportError:
             self._layout.addWidget(self._missing)
+            self._plotter_failed = True
             return
 
         pv.set_plot_theme("document")
@@ -41,12 +49,12 @@ class SolarSystemViewWidget(QWidget):
         self._layout.addWidget(self._plotter)
         self._plotter.set_background("#0f172a")
         self._plotter.show_axes()
-        self._missing.hide()
-
-    def has_plotter(self) -> bool:
-        return self._plotter is not None
+        rw = getattr(self._plotter, "ren_win", None) or getattr(self._plotter, "render_window", None)
+        if rw is not None and hasattr(rw, "SetMultiSamples"):
+            rw.SetMultiSamples(0)
 
     def set_episode(self, episode: "ViewerEpisode") -> None:
+        self._ensure_plotter()
         self._episode = episode
         self._time_index = 0
         self._redraw()
@@ -54,6 +62,7 @@ class SolarSystemViewWidget(QWidget):
     def set_time_index(self, idx: int) -> None:
         if self._episode is None:
             return
+        self._ensure_plotter()
         n = self._episode.times.shape[0]
         self._time_index = int(np.clip(idx, 0, n - 1))
         self._redraw()

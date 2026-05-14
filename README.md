@@ -125,6 +125,8 @@ or:
 
 PySide6 is required; the entry point prints a short message if it is missing.
 
+On **WSLg**, do **not** set `QT_QPA_PLATFORM=xcb` unless you have installed **`libxcb-cursor0`** (Qt 6.5+). Leave the variable **unset** so Qt can use **wayland** or another working plugin.
+
 The **3D viewer** (sidebar: “3D viewer”) uses **PyVista** embedded via **pyvistaqt**; both are listed in `requirements.txt`. It loads a **toy** solar-system demo until SPICE-backed ephemeris is wired (see `agent/VIEWER_PLAN.md`). Use the time slider to scrub the demo trajectory.
 
 ---
@@ -146,6 +148,8 @@ Example notebooks can live under `python/notebooks/` (see `agent/ARCHITECTURE.md
 - **`cmake` not found** — Install CMake and ensure it is on your `PATH`.
 - **`pip install` fails with "externally managed environment"** — Use a virtual environment (as `configure.py` does), not system-wide pip.
 - **Missing GTest** — Install your platform's GoogleTest development package, or set `-DBUILD_TESTS=OFF` if you only need libraries without tests.
+- **GUI / Qt: “Could not load the Qt platform plugin `xcb`” / `xcb-cursor0` (Qt 6.5+)** — If you set `QT_QPA_PLATFORM=xcb`, you must install **`libxcb-cursor0`** on the system (not via pip), e.g. `sudo apt install libxcb-cursor0` on Debian/Ubuntu/WSL. **Prefer** leaving `QT_QPA_PLATFORM` **unset** on **WSLg** so Qt can pick **wayland** or a working backend automatically. Alternatively try explicitly: `export QT_QPA_PLATFORM=wayland`.
+- **GUI / VTK: `BadWindow` (X11)** — The app defers VTK until the **3D viewer** tab is shown and enables shared GL contexts. If issues remain with legacy X11 forwarding, try `export LIBGL_ALWAYS_INDIRECT=1` (remote X only); on WSLg use the default platform, not forced `xcb`, unless you install `libxcb-cursor0`.
 
 ---
 

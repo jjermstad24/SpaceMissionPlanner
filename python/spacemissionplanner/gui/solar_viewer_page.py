@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,7 +23,9 @@ class SolarViewerPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        self._caption = QLabel()
+        self._caption = QLabel(
+            "<i>3D view loads when this tab is shown (VTK initializes after the main window is visible).</i>"
+        )
         self._caption.setWordWrap(True)
         self._caption.setStyleSheet("color: #52525b; font-size: 12px;")
         root.addWidget(self._caption)
@@ -44,9 +47,18 @@ class SolarViewerPage(QWidget):
         root.addLayout(row)
 
         self._episode = None
-        self._load_demo_episode()
+        self._demo_loaded = False
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._demo_loaded or not self.isVisible():
+            return
+        QTimer.singleShot(0, self._load_demo_episode)
 
     def _load_demo_episode(self) -> None:
+        if self._demo_loaded:
+            return
+        self._demo_loaded = True
         ep = build_demo_viewer_episode(n_steps=200)
         self._episode = ep
         self._caption.setText(
