@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -29,19 +30,6 @@ class SolarViewerPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        btn_row = QHBoxLayout()
-        self._btn_demo = QPushButton("Load demo")
-        self._btn_demo.clicked.connect(self._on_load_demo_clicked)
-        self._btn_file = QPushButton("Open trajectory JSON…")
-        self._btn_file.clicked.connect(self._on_open_trajectory_json)
-        btn_row.addWidget(self._btn_demo)
-        btn_row.addWidget(self._btn_file)
-        self._btn_play = QPushButton("Play")
-        self._btn_play.clicked.connect(self._toggle_play)
-        btn_row.addWidget(self._btn_play)
-        btn_row.addStretch(1)
-        root.addLayout(btn_row)
-
         self._play_timer = QTimer(self)
         self._play_timer.setInterval(50)
         self._play_timer.timeout.connect(self._on_play_tick)
@@ -55,6 +43,31 @@ class SolarViewerPage(QWidget):
 
         self._view = SolarSystemViewWidget(self)
         root.addWidget(self._view, stretch=1)
+
+        btn_row = QHBoxLayout()
+        self._btn_demo = QPushButton("Load demo")
+        self._btn_demo.clicked.connect(self._on_load_demo_clicked)
+        self._btn_file = QPushButton("Open trajectory JSON…")
+        self._btn_file.clicked.connect(self._on_open_trajectory_json)
+        btn_row.addWidget(self._btn_demo)
+        btn_row.addWidget(self._btn_file)
+        self._btn_play = QPushButton("Play")
+        self._btn_play.clicked.connect(self._toggle_play)
+        btn_row.addWidget(self._btn_play)
+
+        self._btn_reset_cam = QPushButton("Reset Camera")
+        self._btn_reset_cam.clicked.connect(self._view.reset_camera)
+        btn_row.addWidget(self._btn_reset_cam)
+
+        btn_row.addSpacing(20)
+        btn_row.addWidget(QLabel("Reference:"))
+        self._combo_origin = QComboBox()
+        self._combo_origin.setMinimumWidth(120)
+        self._combo_origin.currentIndexChanged.connect(self._on_origin_changed)
+        btn_row.addWidget(self._combo_origin)
+
+        btn_row.addStretch(1)
+        root.addLayout(btn_row)
 
         row = QHBoxLayout()
         self._slider = QSlider(Qt.Horizontal)
@@ -70,7 +83,10 @@ class SolarViewerPage(QWidget):
         row.addWidget(self._index_label)
         root.addLayout(row)
 
+        self._raw_episode = None
         self._episode = None
+        self._source = "demo"
+        self._path = None
         self._first_show_handled = False
         self._slider_suffix = ""
 
@@ -100,6 +116,19 @@ class SolarViewerPage(QWidget):
             self._stop_playback()
             return
         self._slider.setValue(v + 1)
+
+    def _on_origin_changed(self) -> None:
+        if self._raw_episode is None:
+            return
+        bid = self._combo_origin.currentData()
+        if bid is None:
+            self._update_view_from_episode(self._raw_episode)
+        else:
+            try:
+                rel = self._raw_episode.relocated_to_body(bid)
+                self._update_view_from_episode(rel)
+            except Exception as exc:
+                QMessageBox.warning(self, "Relocation failed", str(exc))
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -132,13 +161,32 @@ class SolarViewerPage(QWidget):
 
     def _apply_episode(self, ep, source: str, path: Path | None) -> None:
         self._stop_playback()
+        self._raw_episode = ep
+        self._source = source
+        self._path = path
+
+        self._combo_origin.blockSignals(True)
+        self._combo_origin.clear()
+        self._combo_origin.addItem("(Inertial/Original)", None)
+        # Sort so Sun/Planets/Moon are predictable
+        preferred = ("Sun", "Mercury", "Venus", "Earth", "Moon", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
+        bodies = sorted(ep.body_ids, key=lambda b: preferred.index(b) if b in preferred else 99)
+        for bid in bodies:
+            self._combo_origin.addItem(bid, bid)
+        self._combo_origin.setCurrentIndex(0)
+        self._combo_origin.blockSignals(False)
+
+        self._update_view_from_episode(ep)
+
+    def _update_view_from_episode(self, ep) -> None:
         self._episode = ep
-        if source == "demo":
+        if self._source == "demo":
             self._slider_suffix = " (demo)"
             note = "<b>Note</b>: Toy solar-system geometry; SPICE-backed ephemeris will replace this."
         else:
             self._slider_suffix = " (file)"
-            note = f"<b>Source</b>: {path.name if path else '?'}"
+            note = f"<b>Source</b>: {self._path.name if self._path else '?'}"
+
         self._caption.setText(
             f"<b>Frame</b>: {ep.frame_name} — {ep.origin_description}<br>"
             f"<b>Time</b>: {ep.time_scale_note}<br>"
@@ -148,10 +196,11 @@ class SolarViewerPage(QWidget):
         n = ep.times.shape[0]
         self._slider.blockSignals(True)
         self._slider.setMaximum(max(0, n - 1))
-        self._slider.setValue(0)
+        # Keep current value if possible, else 0
+        val = min(self._slider.value(), n - 1)
+        self._slider.setValue(val)
         self._slider.blockSignals(False)
-        self._on_slider(0)
-        QTimer.singleShot(0, self._view.reset_camera)
+        self._on_slider(val)
 
     def _on_slider(self, value: int) -> None:
         self._view.set_time_index(value)

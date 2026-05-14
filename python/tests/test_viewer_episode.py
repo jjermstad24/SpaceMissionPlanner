@@ -57,3 +57,21 @@ def test_resample_trajectory() -> None:
     assert out.shape == (2, 3)
     np.testing.assert_allclose(out[0], [0.5, 0.0, 0.0])
     np.testing.assert_allclose(out[1], [1.5, 0.0, 0.0])
+
+
+def test_viewer_episode_relocation() -> None:
+    t = np.array([0.0, 10.0])
+    bodies = {
+        "Sun": np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+        "Earth": np.array([[100.0, 0.0, 0.0], [110.0, 0.0, 0.0]]),
+    }
+    radii = {"Sun": 1.0, "Earth": 1.0}
+    traj = np.array([[10.0, 0.0, 0.0], [15.0, 0.0, 0.0]])
+    ep = ViewerEpisode("F", "D", "N", t, ("Sun", "Earth"), bodies, radii, traj)
+
+    new_ep = ep.relocated_to_body("Earth")
+    assert new_ep.origin_description.startswith("Relocated to Earth")
+    np.testing.assert_allclose(new_ep.body_positions_m["Sun"], [[-100.0, 0.0, 0.0], [-110.0, 0.0, 0.0]])
+    np.testing.assert_allclose(new_ep.body_positions_m["Earth"], [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    np.testing.assert_allclose(new_ep.trajectory_positions_m, [[-90.0, 0.0, 0.0], [-95.0, 0.0, 0.0]])
+

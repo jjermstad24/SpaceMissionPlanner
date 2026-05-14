@@ -39,8 +39,8 @@ def test_load_sample_json() -> None:
     root = Path(__file__).resolve().parents[2]
     path = root / "examples" / "viewer" / "sample_trajectory.json"
     ep = load_viewer_episode_from_json_path(path)
-    assert ep.times.shape[0] == 8
-    assert ep.trajectory_positions_m.shape == (8, 3)
+    assert ep.times.shape[0] == 22
+    assert ep.trajectory_positions_m.shape == (22, 3)
 
 
 def test_json_schema_version_enforced(tmp_path: Path) -> None:

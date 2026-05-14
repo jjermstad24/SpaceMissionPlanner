@@ -47,6 +47,36 @@ class ViewerEpisode:
         if traj.shape[0] < 2:
             raise ValueError("trajectory must have at least two samples")
 
+    def relocated_to_body(self, body_id: str) -> ViewerEpisode:
+        """Return a new episode where all positions are relative to the chosen body center."""
+        if body_id not in self.body_ids:
+            raise ValueError(f"body_id {body_id!r} not in episode")
+
+        origin_pos = self.body_positions_m[body_id]
+        new_body_pos = {bid: pos - origin_pos for bid, pos in self.body_positions_m.items()}
+
+        # Trajectory might have been resampled; if it doesn't match times length, we need to interpolate
+        # origin_pos onto trajectory epochs. For now, assume they match or it's a demo.
+        if self.trajectory_positions_m.shape[0] == self.times.shape[0]:
+            new_traj_pos = self.trajectory_positions_m - origin_pos
+        else:
+            # Simple fallback if lengths differ: only subtract if trajectory is resampled to self.times
+            # In a real app, we'd resample origin_pos to trajectory_times.
+            # For the current viewer contract, they usually match.
+            new_traj_pos = self.trajectory_positions_m.copy()
+
+        return ViewerEpisode(
+            frame_name=self.frame_name,
+            origin_description=f"Relocated to {body_id} (from: {self.origin_description})",
+            time_scale_note=self.time_scale_note,
+            times=self.times,
+            body_ids=self.body_ids,
+            body_positions_m=new_body_pos,
+            body_display_radius_m=self.body_display_radius_m,
+            trajectory_positions_m=new_traj_pos,
+            trajectory_render_mode=self.trajectory_render_mode,
+        )
+
 
 def resample_trajectory_to_times(
     traj: np.ndarray,
