@@ -13,12 +13,16 @@ python/spacemissionplanner/gui/app.py
 python/spacemissionplanner/gui/main_window.py
 python/spacemissionplanner/gui/solar_viewer_page.py
 python/spacemissionplanner/visualization/__init__.py
+python/spacemissionplanner/visualization/converter.py
 python/spacemissionplanner/visualization/demo_ephemeris.py
+python/spacemissionplanner/visualization/ephemeris.py
+python/spacemissionplanner/visualization/episode_io.py
 python/spacemissionplanner/visualization/scene.py
 python/spacemissionplanner/visualization/solar_system_view.py
 python/spacemissionplanner/visualization/viewer_data.py
 python/spacemissionplanner/wrappers/__init__.py
 python/spacemissionplanner/wrappers/backend.py
+python/tests/test_episode_io.py
 python/tests/test_imports.py
 python/tests/test_trajectory_scene.py
 python/tests/test_viewer_episode.py
