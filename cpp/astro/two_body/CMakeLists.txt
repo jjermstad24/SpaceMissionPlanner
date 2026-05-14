@@ -22,7 +22,8 @@ if(BUILD_TESTS)
 
     target_include_directories(test_two_body PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/cpp
+        ${CMAKE_SOURCE_DIR}/cpp/core/include
+        ${CMAKE_SOURCE_DIR}/cpp/astro/two_body/include
     )
 
     target_link_libraries(test_two_body

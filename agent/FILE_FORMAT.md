@@ -50,3 +50,11 @@ Each model directory contains a `CMakeLists.txt` that handles:
 
 Tests are co-located with their model in the `test/` subdirectory.
 Each model enables its own tests via `if(BUILD_TESTS)` in its CMakeLists.txt.
+
+## Style Rules
+
+- **Never use `using namespace`** - Always use explicit namespace prefixes to avoid ambiguity and confusion.
+  ```cpp
+  smp::core::StateVector state;  // Correct
+  using namespace smp::core;      // Forbidden
+  ```

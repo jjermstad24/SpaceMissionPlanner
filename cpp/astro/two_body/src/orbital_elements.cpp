@@ -6,6 +6,7 @@
 #include <Eigen/Geometry>
 
 #include <cmath>
+#include <iostream>
 #include <vector>
 
 namespace smp::astro::two_body {
@@ -26,11 +27,16 @@ OrbitalElements state_to_orbital_elements(
     Eigen::Vector3d h = r.cross(v);
     double h_mag = h.norm();
 
-    Eigen::Vector3d n = Eigen::Vector3d::Zero().cross(h);
+    Eigen::Vector3d n = Eigen::Vector3d::UnitZ().cross(h);
     double n_mag = n.norm();
 
     Eigen::Vector3d e_vec = (r * (v_mag * v_mag - mu / r_mag) - v * (r.dot(v))) / mu;
-    elements.eccentricity = e_vec.norm();
+    double e_mag = e_vec.norm();
+    if (e_mag < 1e-10) {
+        elements.eccentricity = 0.0;
+    } else {
+        elements.eccentricity = e_mag;
+    }
 
     double energy = v_mag * v_mag / 2.0 - mu / r_mag;
     if (std::abs(elements.eccentricity - 1.0) > 1e-10) {
@@ -49,8 +55,13 @@ OrbitalElements state_to_orbital_elements(
     }
 
     if (elements.eccentricity > 1e-10) {
-        elements.true_anomaly = std::acos(e_vec.dot(r) / (elements.eccentricity * r_mag));
-        if (r.dot(v) < 0.0) {
+        double p = elements.semi_major_axis * (1.0 - elements.eccentricity * elements.eccentricity);
+        double cos_nu = (p / r_mag - 1.0) / elements.eccentricity;
+        cos_nu = std::max(-1.0, std::min(1.0, cos_nu));
+        elements.true_anomaly = std::acos(cos_nu);
+
+        double v_radial = r.dot(v) / r_mag;
+        if (v_radial < 0.0) {
             elements.true_anomaly = 2.0 * M_PI - elements.true_anomaly;
         }
     }
@@ -85,13 +96,14 @@ core::StateVector orbital_elements_to_state(const OrbitalElements& elements) {
     double nu = elements.true_anomaly;
     double mu = elements.mu;
 
-    double r = a * (1.0 - e * e) / (1.0 + e * std::cos(nu));
+    double p = a * (1.0 - e * e);
+    double r = p / (1.0 + e * std::cos(nu));
 
     double x_orb = r * std::cos(nu);
     double y_orb = r * std::sin(nu);
 
-    double v_r = std::sqrt(mu / (a * (1.0 - e * e))) * e * std::sin(nu);
-    double v_t = std::sqrt(mu / (a * (1.0 - e * e))) * (1.0 + e * std::cos(nu));
+    double v_r = std::sqrt(mu / p) * e * std::sin(nu);
+    double v_t = std::sqrt(mu / p) * (1.0 + e * std::cos(nu));
 
     double cos_o = std::cos(Omega);
     double sin_o = std::sin(Omega);
@@ -106,11 +118,17 @@ core::StateVector orbital_elements_to_state(const OrbitalElements& elements) {
                (-sin_o * sin_w + cos_o * cos_w * cos_i) * y_orb;
     double z = (sin_w * sin_i) * x_orb + (cos_w * sin_i) * y_orb;
 
-    double vx = (cos_o * cos_w - sin_o * sin_w * cos_i) * v_t +
-               (-cos_o * sin_w - sin_o * cos_w * cos_i) * v_r;
-    double vy = (sin_o * cos_w + cos_o * sin_w * cos_i) * v_t +
-               (-sin_o * sin_w + cos_o * cos_w * cos_i) * v_r;
-    double vz = (sin_w * sin_i) * v_t + (cos_w * sin_i) * v_r;
+    double cos_nu = std::cos(nu);
+    double sin_nu = std::sin(nu);
+
+    double vx_orb = v_r * cos_nu - v_t * sin_nu;
+    double vy_orb = v_r * sin_nu + v_t * cos_nu;
+
+    double vx = (cos_o * cos_w - sin_o * sin_w * cos_i) * vx_orb +
+               (-cos_o * sin_w - sin_o * cos_w * cos_i) * vy_orb;
+    double vy = (sin_o * cos_w + cos_o * sin_w * cos_i) * vx_orb +
+               (-sin_o * sin_w + cos_o * cos_w * cos_i) * vy_orb;
+    double vz = (sin_w * sin_i) * vx_orb + (cos_w * sin_i) * vy_orb;
 
     core::StateVector result(
         Eigen::Vector3d(x, y, z),

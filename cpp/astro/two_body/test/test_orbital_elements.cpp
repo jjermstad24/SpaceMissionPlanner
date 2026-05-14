@@ -5,23 +5,21 @@
 
 #include <Eigen/Geometry>
 
-using namespace smp::astro::two_body;
-
 const double MU_EARTH = 3.986004418e14;
 
 TEST(OrbitalElementsTest, CircularOrbit) {
     double r = 7000.0e3;
     double v = std::sqrt(MU_EARTH / r);
 
-    core::StateVector state(
+    smp::core::StateVector state(
         Eigen::Vector3d(r, 0.0, 0.0),
         Eigen::Vector3d(0.0, v, 0.0),
-        core::Epoch::J2000(),
-        core::Frame::J2000(),
-        core::CentralBodyId::earth
+        smp::core::Epoch::J2000(),
+        smp::core::Frame::J2000(),
+        smp::core::CentralBodyId::earth
     );
 
-    auto elements = state_to_orbital_elements(state, MU_EARTH);
+    auto elements = smp::astro::two_body::state_to_orbital_elements(state, MU_EARTH);
 
     EXPECT_NEAR(elements.semi_major_axis, r, 1.0);
     EXPECT_NEAR(elements.eccentricity, 0.0, 1e-10);
@@ -36,19 +34,19 @@ TEST(OrbitalElementsTest, EllipticalOrbit) {
     double w = M_PI / 3.0;
     double nu = M_PI / 2.0;
 
-    OrbitalElements elements;
+    smp::astro::two_body::OrbitalElements elements;
     elements.semi_major_axis = a;
     elements.eccentricity = e;
     elements.inclination = i;
     elements.raan = Omega;
     elements.arg_of_perigee = w;
     elements.true_anomaly = nu;
-    elements.epoch = core::Epoch::J2000();
+    elements.epoch = smp::core::Epoch::J2000();
     elements.mu = MU_EARTH;
 
-    auto state = orbital_elements_to_state(elements);
+    auto state = smp::astro::two_body::orbital_elements_to_state(elements);
 
-    auto elements_back = state_to_orbital_elements(state, MU_EARTH);
+    auto elements_back = smp::astro::two_body::state_to_orbital_elements(state, MU_EARTH);
 
     EXPECT_NEAR(elements_back.semi_major_axis, a, 1.0);
     EXPECT_NEAR(elements_back.eccentricity, e, 1e-8);
@@ -60,21 +58,21 @@ TEST(OrbitalElementsTest, EllipticalOrbit) {
 TEST(OrbitalElementsTest, PeriodCalculation) {
     double a = 6778.0e3;
 
-    OrbitalElements elements;
+    smp::astro::two_body::OrbitalElements elements;
     elements.semi_major_axis = a;
     elements.mu = MU_EARTH;
 
     double period = elements.period();
 
     EXPECT_NEAR(period, 2.0 * M_PI * std::sqrt(std::pow(a, 3) / MU_EARTH), 1.0);
-    EXPECT_NEAR(period, 5065.0, 10.0);
+    EXPECT_NEAR(period, 5553.0, 10.0);
 }
 
 TEST(OrbitalElementsTest, ApogeePerigee) {
     double a = 10000.0e3;
     double e = 0.5;
 
-    OrbitalElements elements;
+    smp::astro::two_body::OrbitalElements elements;
     elements.semi_major_axis = a;
     elements.eccentricity = e;
     elements.mu = MU_EARTH;
@@ -87,7 +85,7 @@ TEST(KeplerSolverTest, CircularCase) {
     double mean_anomaly = M_PI / 2.0;
     double e = 0.0;
 
-    double e_anom = solve_kepler_equation(mean_anomaly, e);
+    double e_anom = smp::astro::two_body::solve_kepler_equation(mean_anomaly, e);
 
     EXPECT_NEAR(e_anom, mean_anomaly, 1e-12);
 }
@@ -96,7 +94,7 @@ TEST(KeplerSolverTest, EllipticalCase) {
     double mean_anomaly = M_PI / 2.0;
     double e = 0.5;
 
-    double e_anom = solve_kepler_equation(mean_anomaly, e);
+    double e_anom = smp::astro::two_body::solve_kepler_equation(mean_anomaly, e);
 
     double check = e_anom - e * std::sin(e_anom);
     EXPECT_NEAR(check, mean_anomaly, 1e-12);

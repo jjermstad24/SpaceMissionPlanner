@@ -30,11 +30,8 @@ core::StateVector propagate_keplerian(
     double time_of_flight,
     double mu) {
     auto elements = state_to_orbital_elements(initial_state, mu);
-
     propagate_orbital_elements(elements, time_of_flight);
-
     elements.mu = mu;
-
     return orbital_elements_to_state(elements);
 }
 
