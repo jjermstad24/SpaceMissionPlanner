@@ -175,9 +175,9 @@ When these hold, wiring the viewer to the mission graph becomes primarily **data
 
 Initial scaffolding (toy ephemeris, not SPICE):
 
-- **`python/spacemissionplanner/visualization/viewer_data.py`** — `ViewerEpisode` contract and `resample_trajectory_to_times`.
+- **`python/spacemissionplanner/visualization/episode_io.py`** — v1 trajectory JSON loader (`load_viewer_episode_from_json_path`) and `viewer_episode_from_trajectory_arrays` for notebooks; stub origin body for scale.
 - **`python/spacemissionplanner/visualization/demo_ephemeris.py`** — `build_demo_viewer_episode()` coplanar demo (Sun, planets, Moon + sample trajectory).
 - **`python/spacemissionplanner/visualization/solar_system_view.py`** — `SolarSystemViewWidget` (PyVista `QtInteractor`).
 - **`python/spacemissionplanner/gui/solar_viewer_page.py`** — Sidebar “3D viewer” page with time scrubber and demo load.
 
-Next backend-facing step: replace `build_demo_viewer_episode` inputs with SPICE/C++-sampled `ViewerEpisode` while keeping the widget API stable.
+Next backend-facing step: replace `build_demo_viewer_episode` inputs with SPICE/C++-sampled `ViewerEpisode` while keeping the widget API stable. Trajectory-only files can already be exchanged via `episode_io` (Phase B in §5).

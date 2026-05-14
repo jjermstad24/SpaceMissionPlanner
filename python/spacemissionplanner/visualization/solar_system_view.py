@@ -11,6 +11,52 @@ if TYPE_CHECKING:
     from spacemissionplanner.visualization.viewer_data import ViewerEpisode
 
 
+def _tube_radius_from_points(points: np.ndarray) -> float:
+    span = float(np.max(np.ptp(points, axis=0)))
+    ext = float(np.max(np.linalg.norm(points, axis=1)))
+    if not np.isfinite(span):
+        span = 0.0
+    if not np.isfinite(ext):
+        ext = 0.0
+    base = max(span * 0.012, ext * 0.005, 8e4)
+    return float(np.clip(base, 8e4, 8e10))
+
+
+def _cursor_radius(points: np.ndarray, k: int) -> float:
+    span = float(max(np.max(np.ptp(points, axis=0)), 1.0))
+    loc = float(np.linalg.norm(points[k]))
+    return float(np.clip(0.025 * max(span, loc), 1.2e5, 3e9))
+
+
+def _add_polyline(
+    plotter,
+    points: np.ndarray,
+    *,
+    color: str,
+    line_width: int,
+    tube: bool,
+    name: str,
+) -> None:
+    import pyvista as pv
+
+    if points.shape[0] < 2:
+        return
+    poly = pv.PolyData(points)
+    n = points.shape[0]
+    poly.lines = np.hstack([[n], np.arange(n, dtype=np.int32)])
+    if tube:
+        r = _tube_radius_from_points(points)
+        try:
+            mesh = poly.tube(radius=r)
+            plotter.add_mesh(mesh, color=color, smooth_shading=True, name=name)
+        except Exception:
+            line = pv.lines_from_points(points)
+            plotter.add_mesh(line, color=color, line_width=line_width, name=name)
+    else:
+        line = pv.lines_from_points(points)
+        plotter.add_mesh(line, color=color, line_width=line_width, name=name)
+
+
 class SolarSystemViewWidget(QWidget):
     """Renders a ``ViewerEpisode`` with a time index; bodies as spheres, trajectory as a thick line."""
 
@@ -71,6 +117,33 @@ class SolarSystemViewWidget(QWidget):
         if self._plotter is not None:
             self._plotter.reset_camera()
 
+    def _draw_trajectory(self, ep: "ViewerEpisode", k: int) -> None:
+        import pyvista as pv
+
+        full = np.asarray(ep.trajectory_positions_m, dtype=np.float64)
+        if full.shape[0] < 2:
+            return
+
+        mode = ep.trajectory_render_mode
+
+        if mode == "full_path":
+            _add_polyline(self._plotter, full, color="#f8fafc", line_width=5, tube=True, name="trajectory")
+            cr = _cursor_radius(full, k)
+            pt = full[k]
+            sph = pv.Sphere(radius=cr, center=pt, theta_resolution=20, phi_resolution=20)
+            self._plotter.add_mesh(sph, color="#38bdf8", smooth_shading=True, name="trajectory_cursor")
+            return
+
+        # grow: faint full path so index 0 is not empty, plus highlighted prefix
+        _add_polyline(self._plotter, full, color="#64748b", line_width=2, tube=False, name="trajectory_full")
+        seg = full[: k + 1]
+        if seg.shape[0] >= 2:
+            _add_polyline(self._plotter, seg, color="#f8fafc", line_width=4, tube=True, name="trajectory_head")
+        elif seg.shape[0] == 1:
+            cr = _cursor_radius(full, 0)
+            sph = pv.Sphere(radius=cr, center=seg[0], theta_resolution=18, phi_resolution=18)
+            self._plotter.add_mesh(sph, color="#38bdf8", smooth_shading=True, name="trajectory_cursor")
+
     def _redraw(self) -> None:
         if self._plotter is None or self._episode is None:
             return
@@ -107,17 +180,6 @@ class SolarSystemViewWidget(QWidget):
             sph = pv.Sphere(radius=r, center=pos, theta_resolution=24, phi_resolution=24)
             self._plotter.add_mesh(sph, color=color, smooth_shading=True, name=f"body_{bid}")
 
-        traj = ep.trajectory_positions_m[: k + 1]
-        if traj.shape[0] >= 2:
-            poly = pv.PolyData(traj)
-            n = traj.shape[0]
-            poly.lines = np.hstack([[n], np.arange(n, dtype=np.int32)])
-            scale_r = float(np.clip(0.006 * np.max(np.linalg.norm(traj, axis=1)), 1e8, 5e10))
-            try:
-                mesh = poly.tube(radius=scale_r)
-                self._plotter.add_mesh(mesh, color="#f8fafc", smooth_shading=True, name="trajectory")
-            except Exception:
-                line = pv.lines_from_points(traj)
-                self._plotter.add_mesh(line, color="#f8fafc", line_width=4, name="trajectory")
+        self._draw_trajectory(ep, k)
 
         self._plotter.render()

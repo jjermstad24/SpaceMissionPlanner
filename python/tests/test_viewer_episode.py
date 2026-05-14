@@ -10,6 +10,7 @@ def test_demo_episode_validates() -> None:
     assert ep.frame_name
     assert len(ep.body_ids) >= 9
     assert "Earth" in ep.body_positions_m
+    assert ep.trajectory_render_mode == "grow"
 
 
 def test_viewer_episode_rejects_bad_trajectory() -> None:
@@ -26,6 +27,25 @@ def test_viewer_episode_rejects_bad_trajectory() -> None:
             body_positions_m=bodies,
             body_display_radius_m=r,
             trajectory_positions_m=np.zeros((1, 3)),
+        )
+
+
+def test_viewer_episode_rejects_bad_render_mode() -> None:
+    t = np.linspace(0, 1, 5)
+    bodies = {"Sun": np.zeros((5, 3))}
+    r = {"Sun": 1e9}
+    traj = np.zeros((5, 3))
+    with pytest.raises(ValueError, match="trajectory_render_mode"):
+        ViewerEpisode(
+            frame_name="X",
+            origin_description="",
+            time_scale_note="",
+            times=t,
+            body_ids=("Sun",),
+            body_positions_m=bodies,
+            body_display_radius_m=r,
+            trajectory_positions_m=traj,
+            trajectory_render_mode="invalid",  # type: ignore[arg-type]
         )
 
 

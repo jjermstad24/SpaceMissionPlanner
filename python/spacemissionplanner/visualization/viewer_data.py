@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Literal, Mapping
 
 import numpy as np
+
+TrajectoryRenderMode = Literal["grow", "full_path"]
 
 
 @dataclass(frozen=True)
@@ -20,8 +22,12 @@ class ViewerEpisode:
     body_positions_m: Mapping[str, np.ndarray]  # each (T, 3), meters in frame_name
     body_display_radius_m: Mapping[str, float]  # exaggerated glyph radii for visibility
     trajectory_positions_m: np.ndarray  # (T, 3) or (T_traj, 3); if T_traj != T, resample before use
+    trajectory_render_mode: TrajectoryRenderMode = "grow"
+    """grow: draw prefix ``[:k+1]`` (and faint full path). full_path: always draw full polyline + cursor at *k*."""
 
     def __post_init__(self) -> None:
+        if self.trajectory_render_mode not in ("grow", "full_path"):
+            raise ValueError("trajectory_render_mode must be 'grow' or 'full_path'")
         t = np.asarray(self.times, dtype=np.float64)
         if t.ndim != 1:
             raise ValueError("times must be 1-D")

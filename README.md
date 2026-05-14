@@ -127,7 +127,7 @@ PySide6 is required; the entry point prints a short message if it is missing.
 
 On **WSLg**, do **not** set `QT_QPA_PLATFORM=xcb` unless you have installed **`libxcb-cursor0`** (Qt 6.5+). Leave the variable **unset** so Qt can use **wayland** or another working plugin.
 
-The **3D viewer** (sidebar: “3D viewer”) uses **PyVista** embedded via **pyvistaqt**; both are listed in `requirements.txt`. It loads a **toy** solar-system demo until SPICE-backed ephemeris is wired (see `agent/VIEWER_PLAN.md`). Use the time slider to scrub the demo trajectory.
+The **3D viewer** (sidebar: “3D viewer”) uses **PyVista** embedded via **pyvistaqt**; both are listed in `requirements.txt`. It loads a **toy** solar-system demo until SPICE-backed ephemeris is wired (see `agent/VIEWER_PLAN.md`). Use **Open trajectory JSON…** to load a v1 file (see `examples/viewer/sample_trajectory.json`) or **Load demo** to reset the toy scene; use the **time slider** to scrub and **Play** / **Pause** to animate. JSON files default to ``trajectory_render_mode: full_path`` (full trail + moving cursor); optional ``grow`` matches the accumulating demo style.
 
 ---
 

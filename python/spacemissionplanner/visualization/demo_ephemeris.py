@@ -106,4 +106,5 @@ def build_demo_viewer_episode(*, n_steps: int = 192) -> ViewerEpisode:
         body_positions_m=positions,
         body_display_radius_m=radii,
         trajectory_positions_m=trajectory,
+        trajectory_render_mode="grow",
     )
