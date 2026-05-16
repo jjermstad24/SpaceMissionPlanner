@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         self._nav.setMinimumWidth(200)
         self._nav.setMaximumWidth(280)
         self._nav.setSpacing(2)
-        for label in ("Overview", "3D viewer", "Mission graph", "Propagation", "Optimization"):
+        for label in ("Overview", "3D viewer", "Mission timeline", "Propagation", "Optimization"):
             item = QListWidgetItem(label)
             item.setSizeHint(QSize(0, 40))
             self._nav.addItem(item)

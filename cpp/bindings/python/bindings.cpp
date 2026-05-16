@@ -5,6 +5,7 @@
 #include "core/time/include/epoch.hh"
 #include "core/frames/include/frame.hh"
 #include "astro/two_body/include/propagator.hh"
+#include "astro/two_body/include/orbital_elements.hh"
 #include "mission_graph/include/node.hh"
 #include "mission_graph/include/edge.hh"
 #include "mission_graph/include/graph.hh"
@@ -144,6 +145,24 @@ PYBIND11_MODULE(spacemissionplanner_native, m) {
 
     m.def("propagate_keplerian", &smp::astro::two_body::propagate_keplerian,
           "Propagate a state vector using Keplerian two-body motion");
+
+    m.def(
+        "state_from_orbital_elements",
+        [](double a_m, double e, double i_rad, double raan_rad, double argp_rad, double nu_rad,
+           double epoch_s, double mu) {
+            smp::astro::two_body::OrbitalElements elements;
+            elements.semi_major_axis = a_m;
+            elements.eccentricity = e;
+            elements.inclination = i_rad;
+            elements.raan = raan_rad;
+            elements.arg_of_perigee = argp_rad;
+            elements.true_anomaly = nu_rad;
+            elements.epoch = smp::core::Epoch(epoch_s);
+            elements.mu = mu;
+            return smp::astro::two_body::orbital_elements_to_state(elements);
+        },
+        py::arg("a_m"), py::arg("e"), py::arg("i_rad"), py::arg("raan_rad"), py::arg("argp_rad"),
+        py::arg("nu_rad"), py::arg("epoch_s"), py::arg("mu"));
 
     py::enum_<smp::mission_graph::NodeStatus>(m, "NodeStatus")
         .value("Pending", smp::mission_graph::NodeStatus::Pending)

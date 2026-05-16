@@ -148,6 +148,17 @@ def episode_from_graph(
     )
 
 
+def episode_from_mission(mission, *, run: bool = True) -> ViewerEpisode:
+    """Compile a Mission, run the graph, and build a viewer episode."""
+    if not HAS_NATIVE:
+        raise RuntimeError("Native bindings not available")
+
+    from spacemissionplanner.mission.compile import compile_mission
+
+    graph = compile_mission(mission)
+    return episode_from_graph(graph, run=run, origin_description=mission.name)
+
+
 def build_earth_orbit_episode(
     altitude_km: float = 500.0,
     inclination_deg: float = 0.0,

@@ -62,25 +62,20 @@ Main window, 3D page, mission graph JSON page, Run → 3D.
 
 ---
 
-## Phase H — Mission timeline & clocks
+## Phase H — Mission timeline & clocks ✅ (baseline)
 
-**Goals**
+**Done**
 
-- Mission schema v2 (`agent/MISSION_SCHEMA.md`)
-- Clock registry: TDB, UTC, mission elapsed
-- `TimeSpec` absolute + relative
-- Timeline data model (Python) + load/save
-- Compile coast/waypoint events → graph
+- Mission schema v2 (`python/spacemissionplanner/mission/`)
+- Clocks: TDB, UTC, mission elapsed; `resolve_all_event_times`
+- `compile_mission` (waypoints + coasts); `episode_from_mission`
+- GUI: timeline tree, display clock, scene epoch (TDB spin), mission JSON I/O
+- `state_from_orbital_elements` in native bindings
 
-**Deliverables**
+**Remaining for H+**
 
-- `mission/clocks.py`, `mission/compile.py`
-- GUI: clock dropdown + epoch control
-- Replace list-only mission page with timeline tree (read-only OK first)
-
-**Acceptance**
-
-- Save/load mission with two waypoints and one coast; run produces same trajectory in notebook and GUI.
+- Inspector to edit events in GUI
+- Scene epoch re-samples body ephemeris in 3D (decoupled from scrubber)
 
 ---
 
