@@ -27,7 +27,10 @@ void Graph::add_edge(EdgePtr edge) {
     auto source_node = edge->source();
     auto target_node = edge->target();
 
-    target_node->set_input(edge->target_input(), source_node->get_output(edge->source_output()));
+    auto output = source_node->get_output(edge->source_output());
+    if (output.has_value()) {
+        target_node->set_input(edge->target_input(), *output);
+    }
 
     edges_.push_back(std::move(edge));
 }

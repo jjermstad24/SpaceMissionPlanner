@@ -1,171 +1,163 @@
+# Architecture
 
-# ARCHITECTURE.md
+## System layers
 
-# System Overview
+```text
+┌─────────────────────────────────────────────────────────┐
+│  GUI (PySide6) — timeline, inspector, 3D, scrubber    │
+├─────────────────────────────────────────────────────────┤
+│  Python — mission compile, clocks, visualization, I/O   │
+├─────────────────────────────────────────────────────────┤
+│  pybind11 — StateVector, Graph, Propagator, SPICE, …    │
+├─────────────────────────────────────────────────────────┤
+│  mission_graph │ optimization │ astro │ core │ spice    │
+└─────────────────────────────────────────────────────────┘
+```
 
-The project is divided into five major layers:
-
-1. Numerical Core
-2. Astrodynamics Layer
-3. Mission Graph Layer
-4. Optimization Layer
-5. Frontend Layer
-
----
-
-# Repository Structure
-
-repo/
-├── cpp/
-│   ├── core/
-│   ├── astro/
-│   ├── optimization/
-│   ├── mission_graph/
-│   ├── cspice/
-│   └── bindings/
-│
-├── python/
-│   ├── notebooks/
-│   ├── wrappers/
-│   ├── visualization/
-│   └── gui/
-│
-├── tests/
-├── examples/
-├── docs/
-├── schemas/
-└── assets/
+The GUI **never** integrates trajectories or applies ΔV. It edits a `Mission`, calls `run_graph`, and displays `ViewerEpisode` samples.
 
 ---
 
-# Numerical Core
+## Repository layout
 
-Responsibilities:
-- vector math
-- matrix operations
-- epochs
-- frames
-- coordinate transforms
-- units
+```text
+cpp/
+  core/           epochs, frames, StateVector
+  astro/          two_body propagator, orbital elements
+  mission_graph/  Graph, PropagatorNode, …
+  optimization/   parameters, objectives, solvers
+  spice/          ephemeris (kernels)
+  bindings/python/
 
-Dependencies:
-- Eigen
+python/spacemissionplanner/
+  mission_graph/  execution, serialization, templates
+  visualization/  ViewerEpisode, 3D widget, ephemeris
+  gui/            MainWindow, pages
+  wrappers/       native extension discovery
 
----
-
-# Astrodynamics Layer
-
-Responsibilities:
-- propagation
-- orbital mechanics
-- maneuver execution
-- event detection
-- force models
-
-Initial propagator:
-- two-body propagation
-
-Future extensions:
-- J2
-- N-body
-- SRP
-- low thrust
-- atmospheric drag
+agent/            design docs (this folder)
+```
 
 ---
 
-# Mission Graph Layer
+## Data flow (target)
 
-Responsibilities:
-- node management
-- dependency tracking
-- execution scheduling
-- lazy evaluation
-- serialization
+```text
+User edits Mission (timeline + vehicle)
+        │
+        ▼
+  compile_mission()  ──►  Graph (C++)
+        │
+        ▼
+  run_graph()  ──►  states[], epochs[]
+        │
+        ▼
+  episode_from_mission()  ──►  ViewerEpisode
+        │
+        ▼
+  SolarSystemViewWidget  +  time scrubber
+```
 
-Node categories:
-- orbit nodes
-- maneuver nodes
-- propagation nodes
-- optimization nodes
-- event nodes
-
----
-
-# Optimization Layer
-
-Responsibilities:
-- optimization variables
-- constraints
-- objectives
-- solver orchestration
-
-Initial optimizer:
-- gradient descent
-
-Future extensibility:
-- SQP
-- CMA-ES
-- collocation
-- multiple shooting
+**Clock resolution** happens before compile: all `TimeSpec` → TDB seconds.  
+**Ephemeris** samples bodies on the same TDB grid as the trajectory.
 
 ---
 
-# Frontend Layer
+## Core (`cpp/core`)
 
-Responsibilities:
-- notebook integration
-- plotting
-- graph editing
-- user interaction
-
-The frontend must never contain mission physics.
-
-Trajectory and solar-system viewer planning (bodies + trajectory in a shared frame, phased roadmap): see `agent/VIEWER_PLAN.md`.
+- `Epoch` — TDB since J2000 (extend for clock service later)
+- `Frame` — inertial set in v1; body-fixed later
+- `StateVector` — canonical mission state
+- `transforms` — frame conversions (expand for ECEF/LVLH)
 
 ---
 
-# Python Bindings
+## Astrodynamics (`cpp/astro`)
 
-Bindings use:
-- pybind11
-
-Python APIs must expose:
-- mission construction
-- propagation
-- optimization
-- visualization hooks
+- Two-body Keplerian propagator
+- Orbital elements ↔ state
+- Future: perturbations, maneuvers as first-class ops
 
 ---
 
-# GUI Design
+## Mission graph (`cpp/mission_graph`)
 
-Framework:
-- PySide6 / Qt
+Execution DAG:
 
-Features:
-- graph editing
-- orbit visualization
-- maneuver editing
-- trajectory playback
+| Node (existing / planned) | Role |
+|---------------------------|------|
+| `PropagatorNode` | Coast segment |
+| `ManeuverNode` | ΔV + mass (planned) |
+| `StageNode` | Mass stack / jettison (planned) |
+| Solver nodes | Lambert, targeting (planned) |
 
-The GUI must only orchestrate backend systems.
-
----
-
-# Threading Philosophy
-
-Requirements:
-- task-based execution
-- deterministic behavior
-- immutable propagation inputs
+Python `execution.run_graph()` performs topological run and wires `states → initial_state` edges.
 
 ---
 
-# Serialization
+## Mission model (Python, planned)
 
-Mission files use:
-- JSON
-- schema versioning
+| Module | Role |
+|--------|------|
+| `mission/model.py` | Mission, Event, Vehicle dataclasses |
+| `mission/clocks.py` | Clock registry, TimeSpec → TDB |
+| `mission/compile.py` | Mission → Graph |
+| `mission_graph/serialization.py` | Graph snapshot v1 (debug) |
 
-Mission serialization must remain stable across versions whenever possible.
+Schema: `agent/MISSION_SCHEMA.md`.
+
+---
+
+## Visualization
+
+- **`ViewerEpisode`** — bodies + trajectory arrays + frame metadata
+- **`solar_system_view`** — PyVista/Qt (off-screen on WSL)
+- **Future:** `ground_track_view` — 2D body-fixed plot, linked scrubber
+
+See `agent/VIEWER_PLAN.md`.
+
+---
+
+## GUI structure (target)
+
+| Region | Widget responsibility |
+|--------|---------------------|
+| Toolbar | Mission name, **clock selector**, scene epoch, Run |
+| Left dock | Timeline tree (vehicle + events) |
+| Center | 3D viewport |
+| Right dock | Inspector (representation + derived fields) |
+| Bottom | Time scrubber |
+
+Current app uses sidebar pages as a stepping stone toward this layout.
+
+---
+
+## Native extension
+
+Built module: `spacemissionplanner.spacemissionplanner_native`  
+Discovery: `wrappers.backend.native_extension_status()`.
+
+---
+
+## Threading
+
+- Propagation: deterministic, thread-safe nodes
+- Long ephemeris sample: background worker → immutable `ViewerEpisode` → UI thread render
+
+---
+
+## Serialization
+
+| Artifact | Schema | Purpose |
+|----------|--------|---------|
+| `mission.json` | v2 (target) | User mission |
+| `graph.json` | v1 | Debug / interchange |
+| `trajectory.json` | v1 | Viewer-only samples |
+
+---
+
+## Related docs
+
+- UI: `agent/UI_DESIGN.md`
+- Roadmap: `agent/ROADMAP.md`
+- Code style: `agent/FILE_FORMAT.md`

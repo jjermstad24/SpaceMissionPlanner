@@ -7,6 +7,8 @@ def test_version_defined() -> None:
     assert spacemissionplanner.__version__
 
 
-def test_native_extension_not_built_yet() -> None:
-    info = native_extension_status("spacemissionplanner._native")
+def test_native_extension_status() -> None:
+    info = native_extension_status()
     assert info.status in (NativeExtensionStatus.MISSING, NativeExtensionStatus.LOADED, NativeExtensionStatus.ERROR)
+    if info.status == NativeExtensionStatus.LOADED:
+        assert info.module_name == "spacemissionplanner.spacemissionplanner_native"

@@ -18,8 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from spacemissionplanner.visualization.demo_ephemeris import build_demo_viewer_episode
+from spacemissionplanner.visualization.demo_ephemeris import build_demo_viewer_episode, build_keplerian_episode
 from spacemissionplanner.visualization.episode_io import load_viewer_episode_from_json_path
+from spacemissionplanner.visualization.mission_graph_io import build_earth_orbit_episode
+from spacemissionplanner.gui.vtk_platform import resolve_vtk_display_mode
 from spacemissionplanner.visualization.solar_system_view import SolarSystemViewWidget
 
 
@@ -34,8 +36,14 @@ class SolarViewerPage(QWidget):
         self._play_timer.setInterval(50)
         self._play_timer.timeout.connect(self._on_play_tick)
 
+        vtk_note = ""
+        if resolve_vtk_display_mode() == "offscreen":
+            vtk_note = (
+                " <i>(WSL/off-screen mode: static frames; set SMP_GUI_VTK_MODE=embedded to try native GL.)</i>"
+            )
         self._caption = QLabel(
             "<i>3D view loads when this tab is shown (VTK initializes after the main window is visible).</i>"
+            + vtk_note
         )
         self._caption.setWordWrap(True)
         self._caption.setStyleSheet("color: #52525b; font-size: 12px;")
@@ -49,8 +57,14 @@ class SolarViewerPage(QWidget):
         self._btn_demo.clicked.connect(self._on_load_demo_clicked)
         self._btn_file = QPushButton("Open trajectory JSON…")
         self._btn_file.clicked.connect(self._on_open_trajectory_json)
+        self._btn_kepler = QPushButton("Load Keplerian orbit")
+        self._btn_kepler.clicked.connect(self._on_load_keplerian)
+        self._btn_mg = QPushButton("Mission Graph Orbit")
+        self._btn_mg.clicked.connect(self._on_load_mission_graph)
         btn_row.addWidget(self._btn_demo)
         btn_row.addWidget(self._btn_file)
+        btn_row.addWidget(self._btn_kepler)
+        btn_row.addWidget(self._btn_mg)
         self._btn_play = QPushButton("Play")
         self._btn_play.clicked.connect(self._toggle_play)
         btn_row.addWidget(self._btn_play)
@@ -143,6 +157,20 @@ class SolarViewerPage(QWidget):
     def _on_load_demo_clicked(self) -> None:
         self._apply_episode(build_demo_viewer_episode(n_steps=200), "demo", None)
 
+    def _on_load_keplerian(self) -> None:
+        try:
+            ep = build_keplerian_episode(altitude_km=500.0, n_orbits=2.0, n_steps=200)
+            self._apply_episode(ep, "keplerian", None)
+        except Exception as exc:
+            QMessageBox.warning(self, "Could not generate trajectory", str(exc))
+
+    def _on_load_mission_graph(self) -> None:
+        try:
+            ep = build_earth_orbit_episode(altitude_km=500.0, num_steps=200, step_size=60.0)
+            self._apply_episode(ep, "mission_graph", None)
+        except Exception as exc:
+            QMessageBox.warning(self, "Could not generate mission graph trajectory", str(exc))
+
     def _on_open_trajectory_json(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -158,6 +186,10 @@ class SolarViewerPage(QWidget):
             QMessageBox.warning(self, "Could not load trajectory", str(exc))
             return
         self._apply_episode(ep, "file", Path(path))
+
+    def load_episode(self, ep, *, source: str = "mission_graph", path: Path | None = None) -> None:
+        """Display a ``ViewerEpisode`` (e.g. from mission graph execution)."""
+        self._apply_episode(ep, source, path)
 
     def _apply_episode(self, ep, source: str, path: Path | None) -> None:
         self._stop_playback()
@@ -183,6 +215,9 @@ class SolarViewerPage(QWidget):
         if self._source == "demo":
             self._slider_suffix = " (demo)"
             note = "<b>Note</b>: Toy solar-system geometry; SPICE-backed ephemeris will replace this."
+        elif self._source == "mission_graph":
+            self._slider_suffix = " (mission graph)"
+            note = "<b>Source</b>: Mission graph propagation"
         else:
             self._slider_suffix = " (file)"
             note = f"<b>Source</b>: {self._path.name if self._path else '?'}"
@@ -201,6 +236,7 @@ class SolarViewerPage(QWidget):
         self._slider.setValue(val)
         self._slider.blockSignals(False)
         self._on_slider(val)
+        QTimer.singleShot(0, self._view.reset_camera)
 
     def _on_slider(self, value: int) -> None:
         self._view.set_time_index(value)

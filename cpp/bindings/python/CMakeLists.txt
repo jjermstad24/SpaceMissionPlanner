@@ -10,6 +10,18 @@ target_include_directories(spacemissionplanner_native PRIVATE
     "${CMAKE_SOURCE_DIR}/cpp/core/time/include"
     "${CMAKE_SOURCE_DIR}/cpp/core/frames/include"
     "${CMAKE_SOURCE_DIR}/cpp/core/state/include"
+    "${CMAKE_SOURCE_DIR}/cpp/astro/two_body/include"
+    "${CMAKE_SOURCE_DIR}/cpp/mission_graph/include"
+    "${CMAKE_SOURCE_DIR}/cpp/optimization/include"
+    "${CMAKE_SOURCE_DIR}/cpp/spice/include"
+    "${CMAKE_SOURCE_DIR}/cpp/cspice/include"
+)
+
+target_link_libraries(spacemissionplanner_native PRIVATE
+    two_body
+    mission_graph
+    optimization
+    spice
 )
 
 # Set the output directory to match the python package expected location

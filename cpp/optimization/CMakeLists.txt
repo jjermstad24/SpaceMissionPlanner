@@ -2,6 +2,10 @@ add_library(optimization STATIC
     src/gradient_descent.cpp
 )
 
+set_target_properties(optimization PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
 target_include_directories(optimization PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/cpp

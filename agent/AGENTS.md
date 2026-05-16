@@ -1,182 +1,149 @@
-
 # AGENTS.md
+
+Guidance for human contributors and coding agents working in this repository.
+
+**Product vision:** `agent/UI_DESIGN.md`  
+**System structure:** `agent/ARCHITECTURE.md`  
+**Delivery order:** `agent/ROADMAP.md`  
+**Mission JSON:** `agent/MISSION_SCHEMA.md`  
+**3D / ground views:** `agent/VIEWER_PLAN.md`  
+**Implementation snapshot:** `agent/current_status.md`
+
+---
 
 ## Purpose
 
-This repository is a modular astrodynamics and mission design framework focused on:
-- graph-based mission construction
-- extensible trajectory propagation
-- mission optimization
-- notebook interoperability
-- GUI-driven workflows
-- high-performance numerical execution
+Modular astrodynamics and mission design framework:
 
-The repository is intended to support autonomous coding agents and human contributors simultaneously.
+- Graph-based mission construction (C++ execution)
+- Extensible propagation and optimization
+- Notebook-first APIs
+- Qt GUI that **orchestrates** the backend
+- Deterministic, reproducible runs
 
 ---
 
-# Architectural Principles
+## Architectural principles
 
-## Backend First
+### Backend first
 
-All mission functionality must exist independently from the GUI.
+All mission functionality exists without the GUI. Physics, graph execution, file I/O, and compilation from mission → graph live in C++ / Python libraries—not in Qt widgets.
 
-The GUI is a frontend orchestration layer only.
+### Notebook first
 
-Mission execution, physics, optimization, and serialization must never depend on GUI systems.
+Every GUI capability must be callable from Python and Jupyter with the same data contracts.
 
----
+### Deterministic execution
 
-## Notebook First
+No hidden global simulation state. Graph runs must be reproducible from mission file + version.
 
-Every capability exposed in the GUI must also be available through Python APIs and Jupyter notebooks.
+### Extensibility
 
-Notebook workflows are first-class citizens.
-
----
-
-## Deterministic Execution
-
-Mission graph execution must be deterministic and reproducible.
-
-No hidden mutable global state is allowed.
+Propagators, frames, clocks, node types, and views register through interfaces—avoid hardcoding one mission type.
 
 ---
 
-## Extensibility
+## Canonical state
 
-All major systems must support future extension:
-- propagators
-- force models
-- optimizers
-- visualization systems
-- import/export tools
+Internal state is Cartesian with metadata:
 
-Use interfaces and plugin registration wherever possible.
+- Position, velocity (m, m/s)
+- Epoch (TDB seconds since J2000 internally)
+- Frame (inertial names in v1)
+- Central body
 
----
+```
+x = [x, y, z, vx, vy, vz] + epoch + frame + central_body
+```
 
-# Core Technology Stack
-
-## Backend
-- C++20
-- Eigen
-- SPICE
-- pybind11
-- gtest
-
-## Frontend
-- Python
-- PySide6 / Qt
-- PyVista / VTK
-- Jupyter notebooks
+User-facing inputs (elements, geodetic, etc.) **convert at the boundary** to this type in C++.
 
 ---
 
-# Mission Graph Philosophy
+## Time and clocks
 
-Mission definitions are represented as:
-- nodes
-- edges
-- dependency graphs
-
-Nodes must:
-- declare explicit inputs
-- declare explicit outputs
-- support cache invalidation
-- support lazy evaluation
+- Support **multiple clock kinds** for display and event tagging (see `MISSION_SCHEMA.md`).
+- Resolve to canonical TDB for propagation and SPICE.
+- GUI shows selected display clock; scrubber maps to canonical time array.
 
 ---
 
-# State Representation
+## Frames (phased)
 
-Canonical internal state vectors are Cartesian:
-
-x = [x, y, z, vx, vy, vz]
-
-All states must include:
-- frame
-- epoch
-- central body
-
-Frame-less or epoch-less states are forbidden.
+- **v1:** Inertial only (e.g. J2000 / ECI).
+- **Later:** ECEF, geodetic, LVLH—for inspector input and burns—not for hiding canonical state.
 
 ---
 
-# Units
+## Spacecraft
 
-Internal canonical units:
-- meters
-- seconds
-- kilograms
-- radians
+- **v1:** Single spacecraft.
+- **Later:** Multiple spacecraft for rendezvous (separate timelines or craft selector).
 
 ---
 
-# Propagation Requirements
+## Units
 
-Propagators must:
-- be stateless
-- be deterministic
-- be thread-safe
-- avoid global mutable state
+SI: meters, seconds, kilograms, radians.
 
 ---
 
-# Optimization Requirements
+## Mission graph
 
-Optimization systems must support:
-- objective abstraction
-- constraint abstraction
-- parameter abstraction
-
-Initial optimizer:
-- gradient descent
-
-Future optimizers must integrate through interfaces only.
+Nodes: explicit inputs/outputs, cache invalidation, lazy evaluation.  
+User-facing **timeline** compiles to a graph; raw graph JSON is advanced/debug.
 
 ---
 
-# Serialization
+## Serialization
 
-Mission files:
-- use JSON
-- must contain schema versions
-- must remain deterministic and portable
-
----
-
-# Testing
-
-Every new feature requires:
-- unit tests
-- deterministic validation
-- regression coverage where applicable
-
-C++ tests use gtest.
-Python tests use pytest.
+- JSON with `schema_version`
+- Deterministic save (sorted keys)
+- Mission schema v2 (target) vs graph snapshot v1 (current)
 
 ---
 
-# Forbidden Patterns
+## Testing
 
-Do not:
-- place physics logic in GUI code
-- hardcode frame assumptions
-- hardcode units
-- use mutable global simulation state
-- tightly couple rendering and simulation
-- bypass graph invalidation systems
+- C++: gtest
+- Python: pytest
+- Every feature: unit tests + regression where numeric
 
 ---
 
-# Preferred Development Strategy
+## Forbidden patterns
 
-Implement incrementally:
-1. core math/state systems
-2. propagation
-3. mission graph
-4. optimization
-5. bindings
-6. visualization
-7. GUI tooling
+- Physics or frame math in GUI code
+- Hardcoded units or frames in mission logic
+- Mutable global simulation state
+- Bypassing graph invalidation
+- Tight coupling of VTK rendering to propagator internals
+
+---
+
+## Tech stack
+
+| Layer | Stack |
+|-------|--------|
+| Core | C++20, Eigen |
+| Astro | two-body, SPICE (cspice) |
+| Graph / optimize | mission_graph, optimization |
+| Bindings | pybind11 |
+| Python | wrappers, visualization, mission_graph |
+| GUI | PySide6, PyVista/VTK |
+
+---
+
+## Preferred implementation order
+
+1. Core state, epochs, inertial frames  
+2. Propagation + elements I/O  
+3. Mission schema + compile → graph  
+4. Clock resolution + timeline execution  
+5. 3D scene (bodies + trajectory + scrubber)  
+6. Inspector (ECI, elements)  
+7. Burns, staging, solvers  
+8. Ground track view  
+9. Multi-spacecraft  
+
+Details: `agent/ROADMAP.md`.

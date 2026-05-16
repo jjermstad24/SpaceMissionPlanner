@@ -1,123 +1,161 @@
+# Roadmap
 
-# ROADMAP.md
-
-# Phase 0 — Foundation
-
-## Goals
-- establish repository layout
-- configure build systems
-- configure testing
-- establish coding standards
-
-## Deliverables
-- CMake configuration
-- pybind11 integration
-- gtest integration
-- CI pipeline
-- formatting tools
+Phases reflect **actual progress** and the **UI north star** (`agent/UI_DESIGN.md`). Phases 0–G are largely done; H onward align with the mission timeline product.
 
 ---
 
-# Phase 1 — Numerical Core
+## Phase 0 — Foundation ✅
 
-## Goals
-- create foundational abstractions
-
-## Deliverables
-- state vectors
-- epochs
-- frames
-- transforms
-- unit conventions
+CMake, pybind11, gtest, Python package layout, agent docs.
 
 ---
 
-# Phase 2 — Astrodynamics Core
+## Phase 1 — Numerical core ✅
 
-## Goals
-- implement initial propagation systems
-
-## Deliverables
-- two-body propagator
-- maneuver execution
-- event detection
-- SPICE integration
+`StateVector`, `Epoch`, `Frame`, transforms (partial), SI units.
 
 ---
 
-# Phase 3 — Mission Graph
+## Phase 2 — Astrodynamics core ✅ (baseline)
 
-## Goals
-- implement graph execution model
+Two-body propagator, orbital elements, SPICE ephemeris bindings.
 
-## Deliverables
-- node interfaces
-- edge interfaces
-- dependency invalidation
-- lazy execution
-- graph serialization
+**Next:** maneuver execution in C++, LVLH/ECEF transforms.
 
 ---
 
-# Phase 4 — Optimization
+## Phase 3 — Mission graph ✅ (baseline)
 
-## Goals
-- implement optimization framework
+Graph, edges, `PropagatorNode`, Python execution, graph JSON v1.
 
-## Deliverables
-- parameter systems
-- objective systems
-- constraint systems
-- gradient descent optimizer
+**Next:** `ManeuverNode`, `compile_mission`, mission schema v2.
 
 ---
 
-# Phase 5 — Python Integration
+## Phase 4 — Optimization ✅ (baseline)
 
-## Goals
-- notebook interoperability
+Parameters, objectives, gradient descent.
 
-## Deliverables
-- pybind11 wrappers
-- notebook examples
-- plotting APIs
+**Next:** bind optimizer to mission graph parameters (ΔV components, times).
 
 ---
 
-# Phase 6 — Visualization
+## Phase 5 — Python integration ✅ (baseline)
 
-## Goals
-- trajectory rendering
-
-## Deliverables
-- orbit plotting
-- trajectory rendering
-- maneuver visualization
-- playback tools
+Native module, notebooks path, `mission_graph_io`, templates.
 
 ---
 
-# Phase 7 — GUI
+## Phase 6 — Visualization ✅ (baseline)
 
-## Goals
-- graph-based mission editor
+`ViewerEpisode`, 3D widget, SPICE/toy ephemeris, trajectory JSON, WSL off-screen VTK.
 
-## Deliverables
-- node editor
-- graph manipulation
-- property panels
-- live recomputation
+**Next:** waypoint glyphs, burn vectors, scene clock toolbar.
 
 ---
 
-# Future Expansion
+## Phase 7 — GUI shell ✅ (baseline)
 
-Potential future systems:
-- N-body propagation
-- CR3BP
-- low-thrust optimization
-- launch vehicle ascent
-- covariance analysis
-- Monte Carlo systems
-- rendezvous planning
-- formation flying
+Main window, 3D page, mission graph JSON page, Run → 3D.
+
+**Next:** timeline + inspector layout (see Phase H).
+
+---
+
+## Phase H — Mission timeline & clocks
+
+**Goals**
+
+- Mission schema v2 (`agent/MISSION_SCHEMA.md`)
+- Clock registry: TDB, UTC, mission elapsed
+- `TimeSpec` absolute + relative
+- Timeline data model (Python) + load/save
+- Compile coast/waypoint events → graph
+
+**Deliverables**
+
+- `mission/clocks.py`, `mission/compile.py`
+- GUI: clock dropdown + epoch control
+- Replace list-only mission page with timeline tree (read-only OK first)
+
+**Acceptance**
+
+- Save/load mission with two waypoints and one coast; run produces same trajectory in notebook and GUI.
+
+---
+
+## Phase I — Inspector (inertial v1)
+
+**Goals**
+
+- Inspector for waypoint: ECI r/v and orbital elements
+- Derived read-only fields (elements ↔ ECI)
+- Apply → updates mission event; Run refreshes 3D
+
+**Deliverables**
+
+- No physics in Qt; conversion via native bindings
+
+**Acceptance**
+
+- Edit elements, run, see updated path.
+
+---
+
+## Phase J — Burns & staging
+
+**Goals**
+
+- `ManeuverNode` (ΔV in inertial frame)
+- Stage mass model + rocket equation in C++
+- Vehicle section in timeline; burn events in schema
+
+**Acceptance**
+
+- Two-stage LEO mission with one burn changes apogee predictably (test vs analytic).
+
+---
+
+## Phase K — Solvers & multi-waypoint targeting
+
+**Goals**
+
+- Lambert / targeting nodes between waypoints
+- Optional optimizer hooks for free parameters
+
+---
+
+## Phase L — Ground track view
+
+**Goals**
+
+- 2D ground track (Earth first), linked to scrubber
+- Subsatellite lat/lon vs time
+
+**Non-goals for v1**
+
+- Full map tiles; start with simple graticule / coastlines optional.
+
+---
+
+## Phase M — Multi-spacecraft & rendezvous
+
+**Goals**
+
+- Multiple vehicles in mission file
+- Active craft selector; separate trajectories in 3D
+
+---
+
+## Phase N — Visual graph editor (optional)
+
+Node-editor canvas for power users; timeline remains default.
+
+---
+
+## Future expansion
+
+- Perturbations (J2, drag, SRP)
+- Low-thrust, CR3BP
+- Monte Carlo, covariance
+- Formation flying

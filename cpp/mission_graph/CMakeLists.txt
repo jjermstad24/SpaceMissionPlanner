@@ -1,6 +1,11 @@
 add_library(mission_graph STATIC
     src/edge.cpp
     src/graph.cpp
+    src/propagator_node.cpp
+)
+
+set_target_properties(mission_graph PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_include_directories(mission_graph PUBLIC

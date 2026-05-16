@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 import spacemissionplanner
+from spacemissionplanner.gui.mission_graph_page import MissionGraphPage
 from spacemissionplanner.gui.solar_viewer_page import SolarViewerPage
 from spacemissionplanner.wrappers import native_extension_status
 from spacemissionplanner.wrappers.backend import NativeExtensionStatus
@@ -113,15 +114,11 @@ class MainWindow(QMainWindow):
         self._nav.currentRowChanged.connect(self._on_nav_changed)
 
         self._stack = QStackedWidget()
+        self._viewer_page = SolarViewerPage()
+        self._mission_page = MissionGraphPage(on_view_in_3d=self._show_episode_in_viewer)
         self._stack.addWidget(self._page_overview())
-        self._stack.addWidget(SolarViewerPage())
-        self._stack.addWidget(
-            self._page_placeholder(
-                "Mission graph",
-                "Visual node editor for missions, dependencies, and lazy evaluation will live here.\n"
-                "Execution stays in the C++ mission graph layer.",
-            )
-        )
+        self._stack.addWidget(self._viewer_page)
+        self._stack.addWidget(self._mission_page)
         self._stack.addWidget(
             self._page_placeholder(
                 "Propagation",
@@ -146,6 +143,10 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, row: int) -> None:
         if 0 <= row < self._stack.count():
             self._stack.setCurrentIndex(row)
+
+    def _show_episode_in_viewer(self, episode: object) -> None:
+        self._viewer_page.load_episode(episode, source="mission_graph")
+        self._nav.setCurrentRow(1)
 
     def _page_overview(self) -> QWidget:
         outer = QWidget()
@@ -177,7 +178,7 @@ class MainWindow(QMainWindow):
             "<ul style='margin-top:8px; line-height:1.5;'>"
             "<li>Open <b>3D viewer</b> for a toy solar-system scene and trajectory (SPICE-backed data later).</li>"
             "<li>Use <b>notebooks</b> and Python APIs for reproducible workflows.</li>"
-            "<li>Use the sidebar for mission graph, propagation, and optimization placeholders.</li>"
+            "<li>Use <b>Mission graph</b> to build, run, and send trajectories to the 3D viewer.</li>"
             "<li>Native acceleration will appear once pybind11 modules are built and exposed under <code>spacemissionplanner</code>.</li>"
             "</ul>"
         )
@@ -237,9 +238,9 @@ class MainWindow(QMainWindow):
 
         info = native_extension_status()
         if info.status == NativeExtensionStatus.LOADED:
-            ext_msg = "C++ extension: loaded"
+            ext_msg = f"C++ extension: loaded ({info.module_name})"
         elif info.status == NativeExtensionStatus.MISSING:
-            ext_msg = "C++ extension: not built (expected until pybind11 is wired)"
+            ext_msg = "C++ extension: not built — run `make` in the repo root"
         else:
             ext_msg = "C++ extension: error"
 
