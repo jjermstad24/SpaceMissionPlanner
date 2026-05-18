@@ -2,15 +2,11 @@ package com.spacemissionplanner.ui;
 
 import com.spacemissionplanner.physics.OrekitService;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
-import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
-import javafx.scene.layout.GridPane;
-import javafx.scene.paint.Color;
+import javafx.scene.layout.VBox;
 import org.orekit.orbits.Orbit;
 
 import java.util.List;
@@ -25,11 +21,12 @@ public class MainController {
     @FXML private TextField tfTrueAnomaly;
 
     @FXML private ListView<String> timelineList;
-    @FXML private Canvas orbitCanvas;
+    @FXML private VBox viewerContainer;
     @FXML private Label statusLabel;
 
     private OrekitService physicsService;
     private ObservableList<String> timelineItems;
+    private Viewer3D viewer3D;
 
     @FXML
     private void initialize() {
@@ -39,11 +36,14 @@ public class MainController {
         );
         timelineList.setItems(timelineItems);
         setDefaults();
+
+        // Create 3D viewer
+        viewer3D = new Viewer3D();
+        viewerContainer.getChildren().add(0, viewer3D);
     }
 
     private void setDefaults() {
-        // Default: 500 km altitude circular orbit
-        tfSemiMajorAxis.setText("6871");  // 6371 + 500 km in km
+        tfSemiMajorAxis.setText("6871");
         tfEccentricity.setText("0.0");
         tfInclination.setText("45.0");
         tfRaan.setText("0.0");
@@ -56,7 +56,7 @@ public class MainController {
         try {
             statusLabel.setText("Computing...");
 
-            double a = Double.parseDouble(tfSemiMajorAxis.getText()) * 1000; // km to m
+            double a = Double.parseDouble(tfSemiMajorAxis.getText()) * 1000;
             double e = Double.parseDouble(tfEccentricity.getText());
             double i = Double.parseDouble(tfInclination.getText());
             double raan = Double.parseDouble(tfRaan.getText());
@@ -65,11 +65,9 @@ public class MainController {
 
             Orbit orbit = physicsService.createOrbit(a, e, i, raan, argPe, ta);
 
-            // Propagate for one orbit (~90 min)
-            List<TrajectoryPoint> trajectory = physicsService.propagate(orbit, 5400, 50);
+            List<TrajectoryPoint> trajectory = physicsService.propagate(orbit, 5400, 100);
 
-            // Draw orbit
-            drawOrbit(trajectory);
+            viewer3D.setTrajectory(trajectory);
 
             statusLabel.setText("Mission complete - " + trajectory.size() + " points");
 
@@ -79,60 +77,34 @@ public class MainController {
         }
     }
 
-    private void drawOrbit(List<TrajectoryPoint> trajectory) {
-        GraphicsContext gc = orbitCanvas.getGraphicsContext2D();
-        double width = orbitCanvas.getWidth();
-        double height = orbitCanvas.getHeight();
-
-        // Clear
-        gc.setFill(Color.BLACK);
-        gc.fillRect(0, 0, width, height);
-
-        // Find bounds
-        double maxR = 0;
-        for (TrajectoryPoint p : trajectory) {
-            double r = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
-            if (r > maxR) maxR = r;
-        }
-
-        // Scale factor
-        double scale = (Math.min(width, height) / 2 - 20) / maxR;
-        double cx = width / 2;
-        double cy = height / 2;
-
-        // Draw orbit (projected onto XY plane)
-        gc.setStroke(Color.CYAN);
-        gc.setLineWidth(2);
-
-        double[] xs = new double[trajectory.size()];
-        double[] ys = new double[trajectory.size()];
-
-        for (int i = 0; i < trajectory.size(); i++) {
-            TrajectoryPoint p = trajectory.get(i);
-            xs[i] = cx + (p.x / maxR) * (width / 2 - 20);
-            ys[i] = cy - (p.y / maxR) * (height / 2 - 20);
-        }
-
-        for (int i = 0; i < xs.length - 1; i++) {
-            gc.strokeLine(xs[i], ys[i], xs[i+1], ys[i+1]);
-        }
-
-        // Draw Earth
-        gc.setFill(Color.BLUE);
-        gc.fillOval(cx - 15, cy - 15, 30, 30);
-
-        // Draw spacecraft at last position
-        if (trajectory.size() > 0) {
-            TrajectoryPoint last = trajectory.get(trajectory.size() - 1);
-            double lastX = cx + (last.x / maxR) * (width / 2 - 20);
-            double lastY = cy - (last.y / maxR) * (height / 2 - 20);
-            gc.setFill(Color.WHITE);
-            gc.fillOval(lastX - 5, lastY - 5, 10, 10);
-        }
+    @FXML
+    private void onAddWaypoint() {
+        int num = timelineItems.size() + 1;
+        timelineItems.add("Waypoint " + num + ": Coast");
     }
 
     @FXML
-    private void onAddWaypoint() {
-        timelineItems.add("Waypoint " + (timelineItems.size() + 1) + ": Coast");
+    private void onResetView() {
+        viewer3D.resetView();
+    }
+
+    @FXML
+    private void onRotateX() {
+        viewer3D.rotateX(15);
+    }
+
+    @FXML
+    private void onRotateXNeg() {
+        viewer3D.rotateX(-15);
+    }
+
+    @FXML
+    private void onRotateY() {
+        viewer3D.rotateY(15);
+    }
+
+    @FXML
+    private void onRotateYNeg() {
+        viewer3D.rotateY(-15);
     }
 }

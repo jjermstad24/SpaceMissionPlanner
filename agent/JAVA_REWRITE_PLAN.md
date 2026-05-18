@@ -69,10 +69,11 @@ space-mission-planner/
 - [x] 2D orbit visualization (Canvas)
 
 ### Phase 4: 3D Visualization
-- [ ] JavaFX 3D scene
-- [ ] Draw Earth sphere
-- [ ] Draw orbit path (Line shape in 3D)
-- [ ] Draw spacecraft marker
+- [x] Pure Java 3D renderer (no OpenGL required)
+- [x] Draw Earth wireframe
+- [x] Draw orbit path
+- [x] Draw spacecraft marker (animated)
+- [x] Camera controls (X/Y rotation buttons)
 
 ### Phase 5: Timeline & Mission Model
 - [ ] Timeline panel (list of waypoints)

@@ -20,6 +20,13 @@
         <orekit.version>13.1</orekit.version>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>jogamp</id>
+            <url>https://jogamp.org/deployment/maven2/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- OreKit for astrodynamics -->
         <dependency>
@@ -69,6 +76,11 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.spacemissionplanner.Main</mainClass>
+                    <environment>
+                        <glass.platform>Monocle</glass.platform>
+                        <eglfb.useEGL>false</eglfb.useEGL>
+                        <prism.order>sw</prism.order>
+                    </environment>
                 </configuration>
             </plugin>
         </plugins>
