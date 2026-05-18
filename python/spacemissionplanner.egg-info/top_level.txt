@@ -1,6 +1,0 @@
-gui
-notebooks
-spacemissionplanner
-tests
-visualization
-wrappers

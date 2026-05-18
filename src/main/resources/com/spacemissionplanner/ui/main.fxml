@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.spacemissionplanner.ui.MainController">
+
+    <top>
+        <MenuBar>
+            <Menu text="File">
+                <MenuItem text="New Mission"/>
+                <MenuItem text="Open..."/>
+                <MenuItem text="Save"/>
+                <SeparatorMenuItem/>
+                <MenuItem text="Exit"/>
+            </Menu>
+            <Menu text="Mission">
+                <MenuItem text="Add Waypoint" onAction="#onAddWaypoint"/>
+                <MenuItem text="Run Mission" onAction="#onRunMission"/>
+            </Menu>
+        </MenuBar>
+    </top>
+
+    <center>
+        <SplitPane dividerPositions="0.3">
+            <!-- Left: Timeline -->
+            <VBox spacing="10" style="-fx-padding: 10;">
+                <Label text="TIMELINE" style="-fx-font-weight: bold;"/>
+                <ListView fx:id="timelineList" prefHeight="300"/>
+                <Button text="+ Add Waypoint" onAction="#onAddWaypoint"/>
+            </VBox>
+
+            <!-- Right: 3D/2D Viewer -->
+            <VBox spacing="10" style="-fx-padding: 10;">
+                <Label text="ORBIT VIEW" style="-fx-font-weight: bold;"/>
+                <Canvas fx:id="orbitCanvas" width="400" height="400"
+                        style="-fx-background-color: black;"/>
+            </VBox>
+        </SplitPane>
+    </center>
+
+    <bottom>
+        <VBox spacing="5" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
+            <!-- Orbit Input -->
+            <Label text="ORBIT INPUT (Selected Waypoint)" style="-fx-font-weight: bold;"/>
+            <GridPane hgap="10" vgap="5">
+                <Label text="a (km):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                <TextField fx:id="tfSemiMajorAxis" GridPane.columnIndex="1" GridPane.rowIndex="0" prefWidth="80"/>
+
+                <Label text="e:" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                <TextField fx:id="tfEccentricity" GridPane.columnIndex="3" GridPane.rowIndex="0" prefWidth="60"/>
+
+                <Label text="i (°):" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
+                <TextField fx:id="tfInclination" GridPane.columnIndex="5" GridPane.rowIndex="0" prefWidth="60"/>
+
+                <Label text="Ω (°):" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                <TextField fx:id="tfRaan" GridPane.columnIndex="1" GridPane.rowIndex="1" prefWidth="80"/>
+
+                <Label text="ω (°):" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
+                <TextField fx:id="tfArgPeriapsis" GridPane.columnIndex="3" GridPane.rowIndex="1" prefWidth="60"/>
+
+                <Label text="ν (°):" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
+                <TextField fx:id="tfTrueAnomaly" GridPane.columnIndex="5" GridPane.rowIndex="1" prefWidth="60"/>
+            </GridPane>
+
+            <!-- Run & Status -->
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Button text="Run Mission" onAction="#onRunMission"
+                        style="-fx-font-size: 14px; -fx-padding: 8 20;"/>
+                <Label fx:id="statusLabel" text="Ready" style="-fx-text-fill: #333;"/>
+            </HBox>
+        </VBox>
+    </bottom>
+</BorderPane>
