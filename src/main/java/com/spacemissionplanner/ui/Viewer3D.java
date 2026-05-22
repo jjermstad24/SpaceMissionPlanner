@@ -1,8 +1,8 @@
 package com.spacemissionplanner.ui;
 
+import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
 import javafx.animation.AnimationTimer;
-import javafx.application.Platform;
 import javafx.geometry.Point3D;
 import javafx.scene.AmbientLight;
 import javafx.scene.Group;
@@ -13,12 +13,16 @@ import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.image.Image;
 import javafx.scene.paint.PhongMaterial;
 import javafx.scene.shape.Cylinder;
 import javafx.scene.shape.MeshView;
 import javafx.scene.shape.Sphere;
 import javafx.scene.shape.TriangleMesh;
+import javafx.scene.transform.Affine;
 import javafx.scene.transform.Rotate;
+
+import javafx.scene.shape.Box;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +32,10 @@ public class Viewer3D extends VBox {
     private static final double EARTH_RADIUS_M = 6371000.0;
     private static final double VISUAL_SCALE = 1.0 / EARTH_RADIUS_M;
 
+    private CelestialBody currentBody = CelestialBody.EARTH;
+    private double bodyRadiusM = EARTH_RADIUS_M;
+    private double visualScale = VISUAL_SCALE;
+
     private SubScene subScene;
     private Group sceneRoot;
     private Group earthGroup;
@@ -35,12 +43,8 @@ public class Viewer3D extends VBox {
     private Group spacecraftGroup;
 
     private Sphere earthSphere;
-    private MeshView spacecraftMesh;
-    private Cylinder spacecraftBody;
-    private Cylinder spacecraftNose;
-
     private PerspectiveCamera camera;
-    private double rotX = 20, rotY = 0;
+    private Affine cameraOrient = new Affine();
     private double camDist = 5;
     private double mouseX, mouseY;
     private boolean dragging = false;
@@ -51,6 +55,8 @@ public class Viewer3D extends VBox {
     private Point3D currentTargetPos = new Point3D(0, 0, 0);
 
     private List<TrajectoryPoint> trajectory;
+    private List<List<TrajectoryPoint>> groups = new ArrayList<>();
+    private List<Color> groupColors = new ArrayList<>();
     private int currentIndex = 0;
     private long lastUpdateTime = 0;
     private static final long UPDATE_INTERVAL_MS = 50;
@@ -68,11 +74,7 @@ public class Viewer3D extends VBox {
     }
 
     private void updateCamera() {
-        cameraPivot.getTransforms().clear();
-
-        Rotate rx = new Rotate(rotX, Rotate.X_AXIS);
-        Rotate ry = new Rotate(rotY, Rotate.Y_AXIS);
-        cameraPivot.getTransforms().addAll(rx, ry);
+        cameraPivot.getTransforms().setAll(cameraOrient);
 
         double lerpFactor = 0.15;
         currentTargetPos = new Point3D(
@@ -96,10 +98,8 @@ public class Viewer3D extends VBox {
         switch (target) {
             case "spacecraft":
                 if (trajectory != null && !trajectory.isEmpty()) {
-                    double maxR = getMaxRadius();
-                    double scale = 1.0 / maxR;
                     TrajectoryPoint p = trajectory.get(currentIndex);
-                    targetPosition = new Point3D(p.x * scale, p.z * scale, p.y * scale);
+                    targetPosition = new Point3D(p.x * VISUAL_SCALE, p.z * VISUAL_SCALE, p.y * VISUAL_SCALE);
                 }
                 break;
             case "earth":
@@ -107,18 +107,6 @@ public class Viewer3D extends VBox {
                 targetPosition = new Point3D(0, 0, 0);
                 break;
         }
-    }
-
-    private double getMaxRadius() {
-        double maxR = EARTH_RADIUS_M;
-        if (trajectory != null) {
-            for (TrajectoryPoint t : trajectory) {
-                double r = Math.sqrt(t.x * t.x + t.y * t.y + t.z * t.z);
-                if (r > maxR) maxR = r;
-            }
-            if (maxR < EARTH_RADIUS_M) maxR = EARTH_RADIUS_M * 1.5;
-        }
-        return maxR;
     }
 
     private void init3DScene() {
@@ -143,6 +131,8 @@ public class Viewer3D extends VBox {
         fillLight.setTranslateY(-3);
         fillLight.setTranslateZ(5);
         sceneRoot.getChildren().add(fillLight);
+
+        cameraOrient.appendRotation(20, 0, 0, 0, new Point3D(1, 0, 0));
 
         cameraPivot = new Group();
         sceneRoot.getChildren().add(cameraPivot);
@@ -170,10 +160,17 @@ public class Viewer3D extends VBox {
 
         subScene.setOnMouseDragged(e -> {
             if (dragging) {
-                rotY += (e.getSceneX() - mouseX) * 0.5;
-                rotX += (e.getSceneY() - mouseY) * 0.5;
+                double dx = e.getSceneX() - mouseX;
+                double dy = e.getSceneY() - mouseY;
                 mouseX = e.getSceneX();
                 mouseY = e.getSceneY();
+
+                Point3D up = cameraOrient.transform(0, 1, 0);
+                cameraOrient.prependRotation(dx * 0.3, 0, 0, 0, up);
+
+                Point3D right = cameraOrient.transform(1, 0, 0);
+                cameraOrient.prependRotation(-dy * 0.3, 0, 0, 0, right);
+
                 updateCamera();
             }
         });
@@ -189,6 +186,16 @@ public class Viewer3D extends VBox {
 
         getChildren().add(subScene);
         updateCamera();
+    }
+
+    public void setCelestialBody(CelestialBody body) {
+        this.currentBody = body;
+        this.bodyRadiusM = body.getMeanRadius();
+        this.visualScale = 1.0 / bodyRadiusM;
+        init3DScene();
+        if (trajectory != null && !trajectory.isEmpty()) {
+            setTrajectoryGroups(groups, groupColors);
+        }
     }
 
     private void createStarfield() {
@@ -207,15 +214,28 @@ public class Viewer3D extends VBox {
     }
 
     private void createEarth() {
+        if (earthGroup != null) {
+            sceneRoot.getChildren().remove(earthGroup);
+        }
         earthGroup = new Group();
 
-        PhongMaterial earthMaterial = new PhongMaterial();
-        earthMaterial.setDiffuseColor(Color.rgb(30, 80, 150));
-        earthMaterial.setSpecularColor(Color.rgb(60, 60, 80));
-        earthMaterial.setSpecularPower(32);
+        PhongMaterial bodyMaterial = new PhongMaterial();
+
+        if (currentBody == CelestialBody.EARTH) {
+            Image earthTexture = new Image(
+                getClass().getResourceAsStream("/com/spacemissionplanner/ui/earth_texture.jpg")
+            );
+            bodyMaterial.setDiffuseMap(earthTexture);
+            bodyMaterial.setSpecularColor(Color.rgb(60, 60, 80));
+            bodyMaterial.setSpecularPower(32);
+        } else {
+            bodyMaterial.setDiffuseColor(Color.rgb(180, 180, 180));
+            bodyMaterial.setSpecularColor(Color.rgb(80, 80, 80));
+            bodyMaterial.setSpecularPower(16);
+        }
 
         earthSphere = new Sphere(1.0);
-        earthSphere.setMaterial(earthMaterial);
+        earthSphere.setMaterial(bodyMaterial);
         earthGroup.getChildren().add(earthSphere);
 
         createLatLonGrid();
@@ -225,8 +245,7 @@ public class Viewer3D extends VBox {
 
     private void createLatLonGrid() {
         PhongMaterial gridMaterial = new PhongMaterial();
-        gridMaterial.setDiffuseColor(Color.rgb(80, 140, 220));
-        gridMaterial.setDiffuseColor(Color.rgb(100, 160, 220));
+        gridMaterial.setDiffuseColor(Color.rgb(120, 200, 255, 0.25));
         gridMaterial.setSpecularColor(Color.TRANSPARENT);
 
         int numLatLines = 12;
@@ -330,12 +349,12 @@ public class Viewer3D extends VBox {
         noseMat.setSpecularColor(Color.WHITE);
         noseMat.setSpecularPower(32);
 
-        spacecraftBody = new Cylinder(0.05, 0.15);
+        Cylinder spacecraftBody = new Cylinder(0.05, 0.15);
         spacecraftBody.setMaterial(bodyMat);
         spacecraftBody.setRotationAxis(Rotate.X_AXIS);
         spacecraftBody.setRotate(90);
 
-        spacecraftNose = new Cylinder(0.0, 0.08, 12);
+        Cylinder spacecraftNose = new Cylinder(0.0, 0.08, 12);
         spacecraftNose.setMaterial(noseMat);
         spacecraftNose.setTranslateY(-0.10);
         spacecraftNose.setRotationAxis(Rotate.X_AXIS);
@@ -353,7 +372,22 @@ public class Viewer3D extends VBox {
     }
 
     public void setTrajectory(List<TrajectoryPoint> trajectory) {
-        this.trajectory = trajectory;
+        List<List<TrajectoryPoint>> singleGroup = new ArrayList<>();
+        singleGroup.add(trajectory);
+        List<Color> colors = new ArrayList<>();
+        colors.add(Color.CYAN);
+        setTrajectoryGroups(singleGroup, colors);
+    }
+
+    public void setTrajectoryGroups(List<List<TrajectoryPoint>> groups, List<Color> colors) {
+        this.groups = groups;
+        this.groupColors = colors;
+
+        List<TrajectoryPoint> flat = new ArrayList<>();
+        for (List<TrajectoryPoint> group : groups) {
+            flat.addAll(group);
+        }
+        this.trajectory = flat;
         this.currentIndex = 0;
 
         if (trajectory == null || trajectory.isEmpty()) {
@@ -368,39 +402,37 @@ public class Viewer3D extends VBox {
             if (r > maxR) maxR = r;
         }
 
-        if (maxR < EARTH_RADIUS_M) {
-            maxR = EARTH_RADIUS_M * 1.5;
-        }
-
-        double scale = 1.0 / maxR;
+        double initCamDist = Math.max(maxR * VISUAL_SCALE * 2.5, 3);
+        camDist = Math.min(initCamDist, 50);
+        camera.setTranslateZ(-camDist);
 
         orbitGroup.getChildren().clear();
-        PhongMaterial orbitMaterial = new PhongMaterial();
-        orbitMaterial.setDiffuseColor(Color.CYAN);
-        orbitMaterial.setSpecularColor(Color.TRANSPARENT);
 
-        int numSegments = Math.min(trajectory.size() - 1, 360);
-        int step = Math.max(1, trajectory.size() / numSegments);
+        for (int g = 0; g < groups.size(); g++) {
+            List<TrajectoryPoint> group = groups.get(g);
+            Color color = colors.get(Math.min(g, colors.size() - 1));
 
-        List<double[]> lineSegments = new ArrayList<>();
+            PhongMaterial orbitMaterial = new PhongMaterial();
+            orbitMaterial.setDiffuseColor(color);
+            orbitMaterial.setSpecularColor(Color.TRANSPARENT);
 
-        for (int i = 0; i < trajectory.size() - 1; i += step) {
-            TrajectoryPoint p1 = trajectory.get(i);
-            TrajectoryPoint p2 = trajectory.get(Math.min(i + step, trajectory.size() - 1));
+            int numSegments = Math.min(group.size() - 1, 360);
+            int step = Math.max(1, group.size() / numSegments);
 
-            double x1 = p1.x * scale;
-            double y1 = p1.z * scale;
-            double z1 = p1.y * scale;
+            for (int i = 0; i < group.size() - 1; i += step) {
+                TrajectoryPoint p1 = group.get(i);
+                TrajectoryPoint p2 = group.get(Math.min(i + step, group.size() - 1));
 
-            double x2 = p2.x * scale;
-            double y2 = p2.z * scale;
-            double z2 = p2.y * scale;
+                double x1 = p1.x * VISUAL_SCALE;
+                double y1 = p1.z * VISUAL_SCALE;
+                double z1 = p1.y * VISUAL_SCALE;
 
-            lineSegments.add(new double[]{x1, y1, z1, x2, y2, z2});
-        }
+                double x2 = p2.x * VISUAL_SCALE;
+                double y2 = p2.z * VISUAL_SCALE;
+                double z2 = p2.y * VISUAL_SCALE;
 
-        for (double[] seg : lineSegments) {
-            createLineSegment(seg[0], seg[1], seg[2], seg[3], seg[4], seg[5], orbitMaterial);
+                createLineSegment(x1, y1, z1, x2, y2, z2, orbitMaterial);
+            }
         }
 
         spacecraftGroup.setVisible(true);
@@ -417,7 +449,7 @@ public class Viewer3D extends VBox {
 
         if (length < 0.0001) return;
 
-        Cylinder line = new Cylinder(0.01, length, 8);
+        Box line = new Box(0.005, 0.005, length);
         line.setMaterial(material);
 
         double mx = (x1 + x2) / 2;
@@ -428,13 +460,16 @@ public class Viewer3D extends VBox {
         line.setTranslateY(my);
         line.setTranslateZ(mz);
 
-        double rx = Math.toDegrees(Math.acos(dy / length));
-        double ry = Math.toDegrees(Math.atan2(dx, dz));
-
-        line.setRotationAxis(Rotate.Y_AXIS);
-        line.setRotate(ry);
-        line.setRotationAxis(Rotate.X_AXIS);
-        line.setRotate(-rx);
+        double dlen = length;
+        Point3D dir = new Point3D(dx / dlen, dy / dlen, dz / dlen);
+        Point3D zAxis = new Point3D(0, 0, 1);
+        double dot = zAxis.dotProduct(dir);
+        if (dot < 0.9999) {
+            Point3D rotAxis = zAxis.crossProduct(dir);
+            double angle = Math.toDegrees(Math.acos(dot));
+            line.setRotationAxis(rotAxis);
+            line.setRotate(angle);
+        }
 
         orbitGroup.getChildren().add(line);
     }
@@ -442,18 +477,10 @@ public class Viewer3D extends VBox {
     private void updateSpacecraftPosition() {
         if (trajectory == null || trajectory.isEmpty()) return;
 
-        double maxR = 0;
-        for (TrajectoryPoint t : trajectory) {
-            double r = Math.sqrt(t.x * t.x + t.y * t.y + t.z * t.z);
-            if (r > maxR) maxR = r;
-        }
-        if (maxR < EARTH_RADIUS_M) maxR = EARTH_RADIUS_M * 1.5;
-        double scale = 1.0 / maxR;
-
         TrajectoryPoint p = trajectory.get(currentIndex);
-        spacecraftGroup.setTranslateX(p.x * scale);
-        spacecraftGroup.setTranslateY(p.z * scale);
-        spacecraftGroup.setTranslateZ(p.y * scale);
+        spacecraftGroup.setTranslateX(p.x * VISUAL_SCALE);
+        spacecraftGroup.setTranslateY(p.z * VISUAL_SCALE);
+        spacecraftGroup.setTranslateZ(p.y * VISUAL_SCALE);
 
         if (currentIndex < trajectory.size() - 1) {
             TrajectoryPoint next = trajectory.get(currentIndex + 1);

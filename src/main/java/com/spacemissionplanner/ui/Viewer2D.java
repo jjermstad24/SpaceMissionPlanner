@@ -1,181 +1,197 @@
 package com.spacemissionplanner.ui;
 
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
-import javafx.animation.AnimationTimer;
-import javafx.geometry.Point2D;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import org.hipparchus.geometry.euclidean.threed.Vector3D;
+import org.orekit.bodies.GeodeticPoint;
+import org.orekit.bodies.OneAxisEllipsoid;
+import org.orekit.frames.Frame;
+import org.orekit.frames.FramesFactory;
+import org.orekit.orbits.CartesianOrbit;
+import org.orekit.utils.IERSConventions;
+import org.orekit.orbits.KeplerianOrbit;
+import org.orekit.orbits.PositionAngleType;
+import org.orekit.time.AbsoluteDate;
+import org.orekit.utils.PVCoordinates;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Viewer2D extends VBox {
 
-    private Canvas canvas;
-    private GraphicsContext gc;
+    private static final double EARTH_GM = 3.986004418e14;
+    private static final double EARTH_SEMIMAJOR_AXIS = 6378137.0;
+    private static final double EARTH_FLATTENING = 1.0 / 298.257223563;
+    private static final Frame EME2000 = FramesFactory.getEME2000();
+    private OneAxisEllipsoid earth;
+
+    private OneAxisEllipsoid getEarth() {
+        if (earth == null) {
+            earth = new OneAxisEllipsoid(EARTH_SEMIMAJOR_AXIS, EARTH_FLATTENING, FramesFactory.getITRF(IERSConventions.IERS_2010, true));
+        }
+        return earth;
+    }
+
+    private ComboBox<String> xSelector;
+    private ComboBox<String> ySelector;
+    private NumberAxis xAxis;
+    private NumberAxis yAxis;
+    private LineChart<Number, Number> chart;
 
     private List<TrajectoryPoint> trajectory;
-    private int currentIndex = 0;
-    private long lastUpdateTime = 0;
-    private static final long UPDATE_INTERVAL_MS = 50;
 
-    private double centerX, centerY;
-    private double scale;
+    private static final String[] VARIABLES = {
+        "Time (s)",
+        "X (km)", "Y (km)", "Z (km)",
+        "Vx (km/s)", "Vy (km/s)", "Vz (km/s)",
+        "Radius (km)", "Speed (km/s)",
+        "Latitude (deg)", "Longitude (deg)", "Altitude (km)",
+        "Semi-major axis (km)", "Eccentricity",
+        "Inclination (deg)", "RAAN (deg)",
+        "Arg. Periapsis (deg)", "True Anomaly (deg)"
+    };
 
     public Viewer2D() {
         setStyle("-fx-background-color: #0a0a1a;");
         VBox.setVgrow(this, Priority.ALWAYS);
+        setSpacing(5);
+        setFillWidth(true);
 
-        canvas = new Canvas();
-        gc = canvas.getGraphicsContext2D();
-        getChildren().add(canvas);
+        xSelector = new ComboBox<>();
+        ySelector = new ComboBox<>();
+        xSelector.getItems().addAll(VARIABLES);
+        ySelector.getItems().addAll(VARIABLES);
+        xSelector.getSelectionModel().select(0);
+        ySelector.getSelectionModel().select(7);
 
-        widthProperty().addListener((obs, oldVal, newVal) -> {
-            canvas.setWidth(newVal.doubleValue());
-            centerX = newVal.doubleValue() / 2;
-            if (trajectory == null) scale = computeEarthScale();
-            draw();
-        });
+        xSelector.setStyle("-fx-text-fill: white; -fx-background-color: #2a2a3e;");
+        ySelector.setStyle("-fx-text-fill: white; -fx-background-color: #2a2a3e;");
 
-        heightProperty().addListener((obs, oldVal, newVal) -> {
-            canvas.setHeight(newVal.doubleValue());
-            centerY = newVal.doubleValue() / 2;
-            if (trajectory == null) scale = computeEarthScale();
-            draw();
-        });
+        Label xLabel = new Label("X-axis:");
+        xLabel.setStyle("-fx-text-fill: #ccc;");
+        Label yLabel = new Label("Y-axis:");
+        yLabel.setStyle("-fx-text-fill: #ccc;");
 
-        startAnimationTimer();
-    }
+        HBox controls = new HBox(10, xLabel, xSelector, yLabel, ySelector);
+        controls.setStyle("-fx-padding: 6; -fx-background-color: #1a1a2e;");
 
-    private double computeEarthScale() {
-        double canvasSize = Math.min(canvas.getWidth(), canvas.getHeight());
-        if (canvasSize <= 0) canvasSize = 400;
-        double targetEarthRadius = canvasSize * 0.35;
-        return targetEarthRadius * 1000000 / 6371000;
+        xAxis = new NumberAxis();
+        xAxis.setStyle("-fx-text-fill: #aaa;");
+        yAxis = new NumberAxis();
+        yAxis.setStyle("-fx-text-fill: #aaa;");
+
+        chart = new LineChart<>(xAxis, yAxis);
+        chart.setCreateSymbols(false);
+        chart.setAnimated(false);
+        chart.setLegendVisible(false);
+        chart.setStyle("-fx-background-color: #0a0a1a;");
+        chart.setVerticalGridLinesVisible(false);
+        chart.setHorizontalGridLinesVisible(true);
+        chart.setPrefHeight(300);
+
+        getChildren().addAll(controls, chart);
+        VBox.setVgrow(chart, Priority.ALWAYS);
+
+        xSelector.setOnAction(e -> updatePlot());
+        ySelector.setOnAction(e -> updatePlot());
     }
 
     public void setTrajectory(List<TrajectoryPoint> trajectory) {
         this.trajectory = trajectory;
-        this.currentIndex = 0;
-
-        if (trajectory != null && !trajectory.isEmpty()) {
-            double maxR = 0;
-            for (TrajectoryPoint p : trajectory) {
-                double r = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
-                if (r > maxR) maxR = r;
-            }
-            if (maxR < 6371000) maxR = 6371000 * 1.5;
-            double canvasSize = Math.min(canvas.getWidth(), canvas.getHeight()) * 0.8;
-            double orbitScale = canvasSize / maxR * 1000000;
-            scale = Math.min(orbitScale, computeEarthScale());
-        } else {
-            scale = computeEarthScale();
-        }
-
-        draw();
+        updatePlot();
     }
 
-    private void draw() {
-        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
-
-        gc.setFill(Color.rgb(10, 20, 40));
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
-
-        drawEarth();
-        drawOrbit();
-        drawSpacecraft();
+    public void setTrajectoryGroups(List<List<TrajectoryPoint>> groups, List<Color> colors) {
+        List<TrajectoryPoint> flat = new ArrayList<>();
+        if (groups != null) {
+            for (List<TrajectoryPoint> g : groups) flat.addAll(g);
+        }
+        setTrajectory(flat);
     }
 
-    private void drawEarth() {
-        double earthRadius = 6371000 * scale / 1000000;
-
-        gc.setFill(Color.rgb(30, 80, 150));
-        gc.fillOval(centerX - earthRadius, centerY - earthRadius,
-                    earthRadius * 2, earthRadius * 2);
-
-        gc.setStroke(Color.rgb(60, 120, 200));
-        gc.setLineWidth(0.5);
-
-        for (int i = -80; i <= 80; i += 20) {
-            double latRad = Math.toRadians(i);
-            double r = earthRadius * Math.cos(latRad);
-            double h = earthRadius * Math.sin(latRad);
-            double height = r;
-            if (Math.abs(i) == 90) {
-                gc.strokeLine(centerX, centerY - earthRadius, centerX, centerY + earthRadius);
-            } else {
-                gc.strokeOval(centerX - r, centerY - h, r * 2, 2 * h * 0.01);
-            }
-        }
-
-        for (int i = -180; i < 180; i += 30) {
-            double lonRad = Math.toRadians(i);
-            double cosLon = Math.cos(lonRad);
-            double sinLon = Math.sin(lonRad);
-
-            gc.strokeLine(centerX, centerY,
-                         centerX + earthRadius * cosLon,
-                         centerY + earthRadius * sinLon);
-        }
-
-        gc.setStroke(Color.rgb(80, 140, 220));
-        gc.setLineWidth(1);
-        gc.strokeOval(centerX - earthRadius, centerY - earthRadius,
-                      earthRadius * 2, earthRadius * 2);
-    }
-
-    private void drawOrbit() {
+    private void updatePlot() {
+        chart.getData().clear();
         if (trajectory == null || trajectory.isEmpty()) return;
 
-        gc.setStroke(Color.CYAN);
-        gc.setLineWidth(2);
+        int xIdx = xSelector.getSelectionModel().getSelectedIndex();
+        int yIdx = ySelector.getSelectionModel().getSelectedIndex();
+        if (xIdx < 0 || yIdx < 0) return;
 
-        boolean first = true;
-        double prevX = 0, prevY = 0;
+        xAxis.setLabel(VARIABLES[xIdx]);
+        yAxis.setLabel(VARIABLES[yIdx]);
+
+        XYChart.Series<Number, Number> series = new XYChart.Series<>();
+
+        AbsoluteDate startDate = trajectory.get(0).date;
 
         for (TrajectoryPoint p : trajectory) {
-            double x = centerX + p.x * scale / 1000000;
-            double y = centerY - p.z * scale / 1000000;
+            double xVal = getVariable(p, xIdx, startDate);
+            double yVal = getVariable(p, yIdx, startDate);
+            series.getData().add(new XYChart.Data<>(xVal, yVal));
+        }
 
-            if (!first) {
-                gc.strokeLine(prevX, prevY, x, y);
-            }
-            prevX = x;
-            prevY = y;
-            first = false;
+        chart.getData().add(series);
+    }
+
+    private double getVariable(TrajectoryPoint p, int idx, AbsoluteDate startDate) {
+        switch (idx) {
+            case 0: return p.date.durationFrom(startDate);
+            case 1: return p.x / 1000;
+            case 2: return p.y / 1000;
+            case 3: return p.z / 1000;
+            case 4: return p.vx / 1000;
+            case 5: return p.vy / 1000;
+            case 6: return p.vz / 1000;
+            case 7: return Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z) / 1000;
+            case 8: return Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz) / 1000;
+            case 9: case 10: case 11: return getGeodetic(p, idx);
+            default: return getKeplerianElement(p, idx);
         }
     }
 
-    private void drawSpacecraft() {
-        if (trajectory == null || trajectory.isEmpty() || currentIndex >= trajectory.size()) return;
-
-        TrajectoryPoint p = trajectory.get(currentIndex);
-        double x = centerX + p.x * scale / 1000000;
-        double y = centerY - p.z * scale / 1000000;
-
-        gc.setFill(Color.ORANGE);
-        gc.fillOval(x - 4, y - 4, 8, 8);
-
-        gc.setStroke(Color.WHITE);
-        gc.setLineWidth(1);
-        gc.strokeOval(x - 6, y - 6, 12, 12);
+    private double getGeodetic(TrajectoryPoint p, int idx) {
+        try {
+            GeodeticPoint geo = getEarth().transform(new Vector3D(p.x, p.y, p.z), EME2000, p.date);
+            switch (idx) {
+                case 9:  return Math.toDegrees(geo.getLatitude());
+                case 10: return Math.toDegrees(geo.getLongitude());
+                case 11: return geo.getAltitude() / 1000;
+            }
+        } catch (Exception e) {
+            return Double.NaN;
+        }
+        return Double.NaN;
     }
 
-    private void startAnimationTimer() {
-        AnimationTimer timer = new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                if (trajectory != null && trajectory.size() > 0) {
-                    if (now - lastUpdateTime > UPDATE_INTERVAL_MS * 1_000_000) {
-                        draw();
-                        currentIndex = (currentIndex + 1) % trajectory.size();
-                        lastUpdateTime = now;
-                    }
-                }
+    private double getKeplerianElement(TrajectoryPoint p, int idx) {
+        try {
+            CartesianOrbit orbit = new CartesianOrbit(
+                new PVCoordinates(
+                    new Vector3D(p.x, p.y, p.z),
+                    new Vector3D(p.vx, p.vy, p.vz)
+                ),
+                EME2000, p.date, EARTH_GM
+            );
+            KeplerianOrbit kep = new KeplerianOrbit(orbit);
+            switch (idx) {
+                case 12: return kep.getA() / 1000;
+                case 13: return kep.getE();
+                case 14: return Math.toDegrees(kep.getI());
+                case 15: return Math.toDegrees(kep.getRightAscensionOfAscendingNode());
+                case 16: return Math.toDegrees(kep.getPerigeeArgument());
+                case 17: return Math.toDegrees(kep.getTrueAnomaly());
             }
-        };
-        timer.start();
+        } catch (Exception e) {
+            return Double.NaN;
+        }
+        return Double.NaN;
     }
 }

@@ -84,11 +84,6 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.spacemissionplanner.Main</mainClass>
-                    <vmArgs>
-                        <vmArg>--add-opens</vmArg>
-                        <vmArg>javafx.graphics/com.sun.javafx.scene=ALL-UNNAMED</vmArg>
-                        <vmArg>-Dprism.order=sw</vmArg>
-                    </vmArgs>
                 </configuration>
             </plugin>
         </plugins>

@@ -8,22 +8,31 @@
             fx:controller="com.spacemissionplanner.ui.MainController">
 
     <top>
-        <MenuBar>
-            <Menu text="File">
-                <MenuItem text="New Mission"/>
-                <MenuItem text="Open..."/>
-                <MenuItem text="Save"/>
-                <SeparatorMenuItem/>
-                <MenuItem text="Exit"/>
-            </Menu>
-            <Menu text="Mission">
-                <MenuItem text="Add Waypoint" onAction="#onAddWaypoint"/>
-                <MenuItem text="Remove Waypoint" onAction="#onRemoveWaypoint"/>
-                <SeparatorMenuItem/>
-                <MenuItem text="Run Selected" onAction="#onRunMission"/>
-                <MenuItem text="Run All Waypoints" onAction="#onRunAllWaypoints"/>
-            </Menu>
-        </MenuBar>
+        <VBox>
+            <MenuBar>
+                <Menu text="File">
+                    <MenuItem text="New Mission"/>
+                    <MenuItem text="Open..."/>
+                    <MenuItem text="Save"/>
+                    <SeparatorMenuItem/>
+                    <MenuItem text="Exit"/>
+                </Menu>
+                <Menu text="Mission">
+                    <MenuItem text="Add Waypoint" onAction="#onAddWaypoint"/>
+                    <MenuItem text="Add Maneuver" onAction="#onAddManeuver"/>
+                    <MenuItem text="Add Coast" onAction="#onAddCoast"/>
+                    <MenuItem text="Remove" onAction="#onRemoveWaypoint"/>
+                    <SeparatorMenuItem/>
+                    <MenuItem text="Run Selected" onAction="#onRunMission"/>
+                    <MenuItem text="Run All" onAction="#onRunAllWaypoints"/>
+                </Menu>
+            </MenuBar>
+            <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 5 10; -fx-background-color: #e0e0e0;">
+                <Label text="Epoch:"/>
+                <ComboBox fx:id="cbEpochFormat" prefWidth="100"/>
+                <TextField fx:id="tfEpochValue" prefWidth="220" promptText="2024-01-15T12:00:00"/>
+            </HBox>
+        </VBox>
     </top>
 
     <center>
@@ -31,12 +40,18 @@
             <!-- Left: Timeline -->
             <VBox spacing="10" style="-fx-padding: 10;">
                 <Label text="TIMELINE" style="-fx-font-weight: bold;"/>
-                <ListView fx:id="timelineList" prefHeight="400" onMouseClicked="#onWaypointSelected"/>
+                <ListView fx:id="timelineList" prefHeight="400"/>
                 <HBox spacing="5">
-                    <Button text="+ Add" onAction="#onAddWaypoint"/>
+                    <MenuButton text="+ Add" style="-fx-font-weight: bold;">
+                        <items>
+                            <MenuItem text="Waypoint" onAction="#onAddWaypoint"/>
+                            <MenuItem text="Maneuver" onAction="#onAddManeuver"/>
+                            <MenuItem text="Coast" onAction="#onAddCoast"/>
+                        </items>
+                    </MenuButton>
                     <Button text="- Remove" onAction="#onRemoveWaypoint"/>
                 </HBox>
-                <Button text="Run All Waypoints" onAction="#onRunAllWaypoints"
+                <Button text="Run All Events" onAction="#onRunAllWaypoints"
                         style="-fx-font-weight: bold;"/>
             </VBox>
 
@@ -44,13 +59,6 @@
             <TabPane fx:id="viewerTabs" tabClosingPolicy="UNAVAILABLE" style="-fx-padding: 0;" minHeight="400">
                 <Tab text="3D View">
                     <VBox fx:id="tab3DContent" spacing="5" style="-fx-padding: 5;">
-                        <HBox spacing="10">
-                            <Button text="Reset View" onAction="#onResetView"/>
-                            <Button text="Rotate X+" onAction="#onRotateX"/>
-                            <Button text="Rotate X-" onAction="#onRotateXNeg"/>
-                            <Button text="Rotate Y+" onAction="#onRotateY"/>
-                            <Button text="Rotate Y-" onAction="#onRotateYNeg"/>
-                        </HBox>
                         <HBox spacing="10">
                             <Label text="Camera Target:"/>
                             <Button text="Earth" onAction="#onTargetEarth"/>
@@ -67,28 +75,63 @@
 
     <bottom>
         <VBox spacing="5" style="-fx-padding: 10; -fx-background-color: #f0f0f0;">
-            <Label text="ORBIT INPUT (Selected Waypoint)" style="-fx-font-weight: bold;"/>
-            <GridPane hgap="10" vgap="5">
-                <Label text="a (km):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
-                <TextField fx:id="tfSemiMajorAxis" GridPane.columnIndex="1" GridPane.rowIndex="0" prefWidth="80"/>
+            <Label fx:id="inputPanelTitle" text="ORBIT INPUT" style="-fx-font-weight: bold;"/>
 
-                <Label text="e:" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
-                <TextField fx:id="tfEccentricity" GridPane.columnIndex="3" GridPane.rowIndex="0" prefWidth="60"/>
+            <VBox fx:id="orbitInputPanel" managed="true" spacing="5">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Frame:"/>
+                    <ComboBox fx:id="cbWaypointFrame" prefWidth="180"/>
+                </HBox>
+                <GridPane hgap="10" vgap="5">
+                    <Label fx:id="lblOrbit1" text="a (km):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfOrbit1" GridPane.columnIndex="1" GridPane.rowIndex="0" prefWidth="80"/>
 
-                <Label text="i (°):" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
-                <TextField fx:id="tfInclination" GridPane.columnIndex="5" GridPane.rowIndex="0" prefWidth="60"/>
+                    <Label fx:id="lblOrbit2" text="e:" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfOrbit2" GridPane.columnIndex="3" GridPane.rowIndex="0" prefWidth="60"/>
 
-                <Label text="Ω (°):" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
-                <TextField fx:id="tfRaan" GridPane.columnIndex="1" GridPane.rowIndex="1" prefWidth="80"/>
+                    <Label fx:id="lblOrbit3" text="i (°):" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfOrbit3" GridPane.columnIndex="5" GridPane.rowIndex="0" prefWidth="60"/>
 
-                <Label text="ω (°):" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
-                <TextField fx:id="tfArgPeriapsis" GridPane.columnIndex="3" GridPane.rowIndex="1" prefWidth="60"/>
+                    <Label fx:id="lblOrbit4" text="Ω (°):" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                    <TextField fx:id="tfOrbit4" GridPane.columnIndex="1" GridPane.rowIndex="1" prefWidth="80"/>
 
-                <Label text="ν (°):" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
-                <TextField fx:id="tfTrueAnomaly" GridPane.columnIndex="5" GridPane.rowIndex="1" prefWidth="60"/>
-            </GridPane>
+                    <Label fx:id="lblOrbit5" text="ω (°):" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
+                    <TextField fx:id="tfOrbit5" GridPane.columnIndex="3" GridPane.rowIndex="1" prefWidth="60"/>
+
+                    <Label fx:id="lblOrbit6" text="ν (°):" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
+                    <TextField fx:id="tfOrbit6" GridPane.columnIndex="5" GridPane.rowIndex="1" prefWidth="60"/>
+                </GridPane>
+            </VBox>
+
+            <VBox fx:id="maneuverInputPanel" managed="true" visible="false" spacing="5">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Frame:"/>
+                    <ComboBox fx:id="cbManeuverFrame" prefWidth="160"/>
+                </HBox>
+                <GridPane hgap="10" vgap="5">
+                    <Label fx:id="lblDvx" text="dVx (m/s):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfDvx" GridPane.columnIndex="1" GridPane.rowIndex="0" prefWidth="80"/>
+
+                    <Label fx:id="lblDvy" text="dVy (m/s):" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfDvy" GridPane.columnIndex="3" GridPane.rowIndex="0" prefWidth="80"/>
+
+                    <Label fx:id="lblDvz" text="dVz (m/s):" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfDvz" GridPane.columnIndex="5" GridPane.rowIndex="0" prefWidth="80"/>
+                </GridPane>
+            </VBox>
+
+            <VBox fx:id="coastInputPanel" managed="true" visible="false">
+                <GridPane hgap="10" vgap="5">
+                    <Label text="Duration (s):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfCoastDuration" GridPane.columnIndex="1" GridPane.rowIndex="0" prefWidth="100"/>
+                    <Label text="Step Size (s):" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                    <TextField fx:id="tfCoastStepSize" GridPane.columnIndex="3" GridPane.rowIndex="0" prefWidth="60" text="60"/>
+                </GridPane>
+            </VBox>
 
             <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Color:"/>
+                <ColorPicker fx:id="eventColorPicker"/>
                 <Button text="Run Mission" onAction="#onRunMission"
                         style="-fx-font-size: 14px; -fx-padding: 8 20;"/>
                 <Label fx:id="statusLabel" text="Ready" style="-fx-text-fill: #333;"/>

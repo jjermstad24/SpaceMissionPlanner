@@ -1,5 +1,8 @@
 package com.spacemissionplanner.physics;
 
+import com.spacemissionplanner.model.CelestialBody;
+import org.hipparchus.geometry.euclidean.threed.Vector3D;
+import org.orekit.orbits.CartesianOrbit;
 import org.orekit.orbits.KeplerianOrbit;
 import org.orekit.orbits.Orbit;
 import org.orekit.orbits.PositionAngleType;
@@ -7,9 +10,12 @@ import org.orekit.propagation.Propagator;
 import org.orekit.propagation.analytical.KeplerianPropagator;
 import org.orekit.propagation.SpacecraftState;
 import org.orekit.time.AbsoluteDate;
+import org.orekit.bodies.GeodeticPoint;
+import org.orekit.bodies.OneAxisEllipsoid;
 import org.orekit.frames.Frame;
 import org.orekit.frames.FramesFactory;
-import org.orekit.bodies.OneAxisEllipsoid;
+import org.orekit.frames.Transform;
+import org.orekit.utils.IERSConventions;
 import org.orekit.utils.PVCoordinates;
 
 import java.util.ArrayList;
@@ -18,15 +24,24 @@ import java.util.List;
 public class OrekitService {
 
     private final Frame inertialFrame;
+    private CelestialBody body = CelestialBody.EARTH;
+
     private static final double EARTH_SEMIMAJOR_AXIS = 6378137.0;
     private static final double EARTH_FLATTENING = 1.0 / 298.257223563;
-    private static final double EARTH_GM = 3.986004418e14;
 
     public OrekitService() {
         this.inertialFrame = FramesFactory.getEME2000();
     }
 
-    public Orbit createOrbit(double a, double e, double i, double raan, double argPe, double trueAnomaly) {
+    public void setCelestialBody(CelestialBody body) {
+        this.body = body;
+    }
+
+    public CelestialBody getCelestialBody() {
+        return body;
+    }
+
+    public Orbit createOrbit(double a, double e, double i, double raan, double argPe, double trueAnomaly, AbsoluteDate date) {
         return new KeplerianOrbit(
             a, e,
             Math.toRadians(i),
@@ -35,9 +50,13 @@ public class OrekitService {
             Math.toRadians(trueAnomaly),
             PositionAngleType.TRUE,
             inertialFrame,
-            AbsoluteDate.J2000_EPOCH,
-            EARTH_GM
+            date != null ? date : AbsoluteDate.J2000_EPOCH,
+            body.getGm()
         );
+    }
+
+    public Orbit createOrbit(double a, double e, double i, double raan, double argPe, double trueAnomaly) {
+        return createOrbit(a, e, i, raan, argPe, trueAnomaly, AbsoluteDate.J2000_EPOCH);
     }
 
     public Propagator createPropagator(Orbit orbit) {
@@ -79,11 +98,12 @@ public class OrekitService {
         int steps = 20;
         double stepSize = duration / steps;
         
-        Orbit startOrbit = new KeplerianOrbit(
-            endPoint.x, endPoint.y, endPoint.z,
-            endPoint.vx, endPoint.vy, endPoint.vz,
-            PositionAngleType.TRUE,
-            inertialFrame, endPoint.date, EARTH_GM
+        Orbit startOrbit = new CartesianOrbit(
+            new PVCoordinates(
+                new Vector3D(endPoint.x, endPoint.y, endPoint.z),
+                new Vector3D(endPoint.vx, endPoint.vy, endPoint.vz)
+            ),
+            inertialFrame, endPoint.date, body.getGm()
         );
         
         Propagator propagator = createPropagator(startOrbit);
@@ -105,6 +125,160 @@ public class OrekitService {
         }
         
         return coastPoints;
+    }
+
+    public TrajectoryPoint createTrajectoryPoint(double a, double e, double i, double raan, double argPe, double ta, AbsoluteDate date) {
+        Orbit orbit = createOrbit(a, e, i, raan, argPe, ta, date);
+        PVCoordinates pv = orbit.getPVCoordinates();
+        return new TrajectoryPoint(
+            orbit.getDate(),
+            pv.getPosition().getX(),
+            pv.getPosition().getY(),
+            pv.getPosition().getZ(),
+            pv.getVelocity().getX(),
+            pv.getVelocity().getY(),
+            pv.getVelocity().getZ()
+        );
+    }
+
+    public TrajectoryPoint createTrajectoryPoint(double a, double e, double i, double raan, double argPe, double ta) {
+        return createTrajectoryPoint(a, e, i, raan, argPe, ta, AbsoluteDate.J2000_EPOCH);
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromInertial(double xKm, double yKm, double zKm,
+                                                              double vxKmS, double vyKmS, double vzKmS,
+                                                              AbsoluteDate date) {
+        AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
+        return new TrajectoryPoint(
+            d,
+            xKm * 1000, yKm * 1000, zKm * 1000,
+            vxKmS * 1000, vyKmS * 1000, vzKmS * 1000
+        );
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromInertial(double xKm, double yKm, double zKm,
+                                                              double vxKmS, double vyKmS, double vzKmS) {
+        return createTrajectoryPointFromInertial(xKm, yKm, zKm, vxKmS, vyKmS, vzKmS, AbsoluteDate.J2000_EPOCH);
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromECEF(double xKm, double yKm, double zKm,
+                                                          double vxKmS, double vyKmS, double vzKmS,
+                                                          AbsoluteDate date) {
+        try {
+            Frame itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
+            AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
+            Transform t = itrf.getTransformTo(inertialFrame, d);
+            PVCoordinates pvECEF = new PVCoordinates(
+                new Vector3D(xKm * 1000, yKm * 1000, zKm * 1000),
+                new Vector3D(vxKmS * 1000, vyKmS * 1000, vzKmS * 1000)
+            );
+            PVCoordinates pvEME2000 = t.transformPVCoordinates(pvECEF);
+            return new TrajectoryPoint(
+                d,
+                pvEME2000.getPosition().getX(),
+                pvEME2000.getPosition().getY(),
+                pvEME2000.getPosition().getZ(),
+                pvEME2000.getVelocity().getX(),
+                pvEME2000.getVelocity().getY(),
+                pvEME2000.getVelocity().getZ()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert ECEF to EME2000", e);
+        }
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromECEF(double xKm, double yKm, double zKm,
+                                                          double vxKmS, double vyKmS, double vzKmS) {
+        return createTrajectoryPointFromECEF(xKm, yKm, zKm, vxKmS, vyKmS, vzKmS, AbsoluteDate.J2000_EPOCH);
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromLLA(double latDeg, double lonDeg, double altKm, AbsoluteDate date) {
+        try {
+            Frame itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
+            OneAxisEllipsoid earth = new OneAxisEllipsoid(EARTH_SEMIMAJOR_AXIS, EARTH_FLATTENING, itrf);
+            AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
+            GeodeticPoint geo = new GeodeticPoint(Math.toRadians(latDeg), Math.toRadians(lonDeg), altKm * 1000);
+            Vector3D posECEF = earth.transform(geo);
+            PVCoordinates pvECEF = new PVCoordinates(posECEF, Vector3D.ZERO);
+            Transform t = itrf.getTransformTo(inertialFrame, d);
+            PVCoordinates pvEME2000 = t.transformPVCoordinates(pvECEF);
+            return new TrajectoryPoint(
+                d,
+                pvEME2000.getPosition().getX(),
+                pvEME2000.getPosition().getY(),
+                pvEME2000.getPosition().getZ(),
+                pvEME2000.getVelocity().getX(),
+                pvEME2000.getVelocity().getY(),
+                pvEME2000.getVelocity().getZ()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert LLA to EME2000", e);
+        }
+    }
+
+    public TrajectoryPoint createTrajectoryPointFromLLA(double latDeg, double lonDeg, double altKm) {
+        return createTrajectoryPointFromLLA(latDeg, lonDeg, altKm, AbsoluteDate.J2000_EPOCH);
+    }
+
+    public TrajectoryPoint applyDeltaV(TrajectoryPoint point, double dVx, double dVy, double dVz) {
+        return applyDeltaV(point, dVx, dVy, dVz, "EME2000");
+    }
+
+    public TrajectoryPoint applyDeltaV(TrajectoryPoint point, double dVx, double dVy, double dVz, String frame) {
+        double fx, fy, fz;
+
+        switch (frame) {
+            case "LVLH": {
+                Vector3D r = new Vector3D(point.x, point.y, point.z);
+                Vector3D v = new Vector3D(point.vx, point.vy, point.vz);
+                Vector3D R = r.normalize();
+                Vector3D N = r.crossProduct(v).normalize();
+                Vector3D T = N.crossProduct(R);
+                Vector3D dV = new Vector3D(
+                    R.getX() * dVx + T.getX() * dVy + N.getX() * dVz,
+                    R.getY() * dVx + T.getY() * dVy + N.getY() * dVz,
+                    R.getZ() * dVx + T.getZ() * dVy + N.getZ() * dVz
+                );
+                fx = dV.getX();
+                fy = dV.getY();
+                fz = dV.getZ();
+                break;
+            }
+            default:
+                fx = dVx;
+                fy = dVy;
+                fz = dVz;
+        }
+
+        return new TrajectoryPoint(
+            point.date,
+            point.x, point.y, point.z,
+            point.vx + fx, point.vy + fy, point.vz + fz
+        );
+    }
+
+    public List<TrajectoryPoint> propagateWithCoast(TrajectoryPoint start, double durationSeconds, int steps) {
+        List<TrajectoryPoint> points = new ArrayList<>();
+        Orbit startOrbit = new CartesianOrbit(
+            new PVCoordinates(
+                new Vector3D(start.x, start.y, start.z),
+                new Vector3D(start.vx, start.vy, start.vz)
+            ),
+            inertialFrame, start.date, body.getGm()
+        );
+        Propagator propagator = createPropagator(startOrbit);
+        double stepSize = durationSeconds / steps;
+        for (int i = 1; i <= steps; i++) {
+            AbsoluteDate targetDate = start.date.shiftedBy(i * stepSize);
+            SpacecraftState state = propagator.propagate(targetDate);
+            PVCoordinates pv = state.getPVCoordinates();
+            points.add(new TrajectoryPoint(
+                targetDate,
+                pv.getPosition().getX(), pv.getPosition().getY(), pv.getPosition().getZ(),
+                pv.getVelocity().getX(), pv.getVelocity().getY(), pv.getVelocity().getZ()
+            ));
+        }
+        return points;
     }
 
     public static class TrajectoryPoint {

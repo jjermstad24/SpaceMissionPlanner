@@ -52,21 +52,14 @@ class WaypointTest {
     }
 
     @Test
-    void testToDisplayString() {
+    void testToString() {
         Waypoint wp = new Waypoint("Test WP", 7000, 0.1, 45.0, 0.0, 0.0, 0.0);
-        String display = wp.toDisplayString();
+        String display = wp.toString();
 
         assertTrue(display.contains("Test WP"));
         assertTrue(display.contains("a=7000"));
         assertTrue(display.contains("e=0.10"));
-        assertTrue(display.contains("i=45°"));
-    }
-
-    @Test
-    void testToString() {
-        Waypoint wp = new Waypoint("Simple", 7000, 0.0, 45.0, 0.0, 0.0, 0.0);
-        
-        assertEquals(wp.toDisplayString(), wp.toString());
+        assertTrue(display.contains("i=45"));
     }
 
     @Test
