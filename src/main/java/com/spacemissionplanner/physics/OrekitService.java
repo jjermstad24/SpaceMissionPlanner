@@ -29,13 +29,13 @@ public class OrekitService {
 
     private final Frame inertialFrame;
     private CelestialBody body = CelestialBody.EARTH;
-
-    private static final double EARTH_SEMIMAJOR_AXIS = 6378137.0;
-    private static final double EARTH_FLATTENING = 1.0 / 298.257223563;
+    private java.util.Set<CelestialBody> gravityEnabled = new java.util.HashSet<>();
 
     public OrekitService() {
         this.inertialFrame = FramesFactory.getEME2000();
         configureDataLoading();
+        gravityEnabled.add(CelestialBody.EARTH);
+        gravityEnabled.add(CelestialBody.MOON);
     }
 
     private void configureDataLoading() {
@@ -57,6 +57,21 @@ public class OrekitService {
         return body;
     }
 
+    public void setGravityEnabled(CelestialBody body, boolean enabled) {
+        if (enabled) {
+            gravityEnabled.add(body);
+        } else {
+            gravityEnabled.remove(body);
+        }
+    }
+
+    private double getEffectiveGm() {
+        if (gravityEnabled.contains(body)) {
+            return body.getGm();
+        }
+        return CelestialBody.EARTH.getGm();
+    }
+
     public Orbit createOrbit(double a, double e, double i, double raan, double argPe, double trueAnomaly, AbsoluteDate date) {
         return new KeplerianOrbit(
             a, e,
@@ -67,7 +82,7 @@ public class OrekitService {
             PositionAngleType.TRUE,
             inertialFrame,
             date != null ? date : AbsoluteDate.J2000_EPOCH,
-            body.getGm()
+            getEffectiveGm()
         );
     }
 
@@ -119,7 +134,7 @@ public class OrekitService {
                 new Vector3D(endPoint.x, endPoint.y, endPoint.z),
                 new Vector3D(endPoint.vx, endPoint.vy, endPoint.vz)
             ),
-            inertialFrame, endPoint.date, body.getGm()
+            inertialFrame, endPoint.date, getEffectiveGm()
         );
         
         Propagator propagator = createPropagator(startOrbit);
@@ -211,10 +226,10 @@ public class OrekitService {
     public TrajectoryPoint createTrajectoryPointFromLLA(double latDeg, double lonDeg, double altKm, AbsoluteDate date) {
         try {
             Frame itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
-            OneAxisEllipsoid earth = new OneAxisEllipsoid(EARTH_SEMIMAJOR_AXIS, EARTH_FLATTENING, itrf);
+            OneAxisEllipsoid bodyEllipsoid = new OneAxisEllipsoid(body.getEllipsoidA(), body.getFlattening(), itrf);
             AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
             GeodeticPoint geo = new GeodeticPoint(Math.toRadians(latDeg), Math.toRadians(lonDeg), altKm * 1000);
-            Vector3D posECEF = earth.transform(geo);
+            Vector3D posECEF = bodyEllipsoid.transform(geo);
             PVCoordinates pvECEF = new PVCoordinates(posECEF, Vector3D.ZERO);
             Transform t = itrf.getTransformTo(inertialFrame, d);
             PVCoordinates pvEME2000 = t.transformPVCoordinates(pvECEF);
@@ -280,7 +295,7 @@ public class OrekitService {
                 new Vector3D(start.x, start.y, start.z),
                 new Vector3D(start.vx, start.vy, start.vz)
             ),
-            inertialFrame, start.date, body.getGm()
+            inertialFrame, start.date, getEffectiveGm()
         );
         Propagator propagator = createPropagator(startOrbit);
         double stepSize = durationSeconds / steps;
@@ -317,6 +332,67 @@ public class OrekitService {
                 a * sinM * Math.sin(i)
             );
         }
+    }
+
+    public void getMoonPV(AbsoluteDate date, Vector3D[] outPos, Vector3D[] outVel) {
+        AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
+        try {
+            org.orekit.bodies.CelestialBody moon = CelestialBodyFactory.getMoon();
+            PVCoordinates pv = moon.getPVCoordinates(d, inertialFrame);
+            outPos[0] = pv.getPosition();
+            outVel[0] = pv.getVelocity();
+        } catch (Exception e) {
+            double a = 384400000;
+            double period = 27.321661 * 86400;
+            double n = 2 * Math.PI / period;
+            double m0 = Math.toRadians(135.0);
+            double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
+            double i = Math.toRadians(23.44);
+            double cosM = Math.cos(m);
+            double sinM = Math.sin(m);
+            outPos[0] = new Vector3D(a * cosM, a * sinM * Math.cos(i), a * sinM * Math.sin(i));
+            outVel[0] = new Vector3D(
+                -a * n * sinM,
+                a * n * cosM * Math.cos(i),
+                a * n * cosM * Math.sin(i)
+            );
+        }
+    }
+
+    public List<TrajectoryPoint> translateToEarthCentered(List<TrajectoryPoint> points, CelestialBody relativeBody) {
+        if (relativeBody == CelestialBody.EARTH || points == null) return points;
+        List<TrajectoryPoint> result = new ArrayList<>();
+        Vector3D[] moonPosArr = new Vector3D[1];
+        Vector3D[] moonVelArr = new Vector3D[1];
+        for (TrajectoryPoint p : points) {
+            getMoonPV(p.date, moonPosArr, moonVelArr);
+            result.add(new TrajectoryPoint(p.date,
+                p.x + moonPosArr[0].getX(), p.y + moonPosArr[0].getY(), p.z + moonPosArr[0].getZ(),
+                p.vx + moonVelArr[0].getX(), p.vy + moonVelArr[0].getY(), p.vz + moonVelArr[0].getZ()));
+        }
+        return result;
+    }
+
+    public List<TrajectoryPoint> getCelestialBodyTrajectory(CelestialBody body, AbsoluteDate start, double durationSeconds, int steps) {
+        List<TrajectoryPoint> points = new ArrayList<>();
+        double stepSize = durationSeconds / steps;
+        for (int i = 0; i <= steps; i++) {
+            AbsoluteDate d = start.shiftedBy(i * stepSize);
+            double x, y, z;
+            if (body == CelestialBody.MOON) {
+                Vector3D moonPos = getMoonPosition(d);
+                x = moonPos.getX();
+                y = moonPos.getY();
+                z = moonPos.getZ();
+            } else {
+                Vector3D moonPos = getMoonPosition(d);
+                x = -moonPos.getX();
+                y = -moonPos.getY();
+                z = -moonPos.getZ();
+            }
+            points.add(new TrajectoryPoint(d, x, y, z, 0, 0, 0));
+        }
+        return points;
     }
 
     public static class TrajectoryPoint {

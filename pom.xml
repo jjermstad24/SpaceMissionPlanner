@@ -86,6 +86,46 @@
                     <mainClass>com.spacemissionplanner.Main</mainClass>
                 </configuration>
             </plugin>
+
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>prepare-orekit-data</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <get src="https://gitlab.orekit.org/orekit/orekit-data/-/archive/main/orekit-data-main.zip"
+                                     dest="${project.build.directory}/orekit-data.zip"
+                                     skipexisting="true"/>
+                                <unzip src="${project.build.directory}/orekit-data.zip"
+                                       dest="${project.build.directory}/orekit-data-tmp"/>
+                                <copy todir="orekit-data" flatten="false">
+                                    <fileset dir="${project.build.directory}/orekit-data-tmp/orekit-data-main">
+                                        <include name="**/*"/>
+                                    </fileset>
+                                </copy>
+                                <delete dir="${project.build.directory}/orekit-data-tmp"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>download-moon-texture</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${project.basedir}/src/main/resources/com/spacemissionplanner/ui"/>
+                                <get src="https://upload.wikimedia.org/wikipedia/commons/d/d1/Solarsystemscope_texture_8k_moon.jpg"
+                                     dest="${project.basedir}/src/main/resources/com/spacemissionplanner/ui/moon_texture.jpg"
+                                     skipexisting="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

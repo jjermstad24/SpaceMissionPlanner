@@ -28,8 +28,8 @@
                 </Menu>
             </MenuBar>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 5 10; -fx-background-color: #e0e0e0;">
-                <Label text="Body:"/>
-                <ComboBox fx:id="cbCelestialBody" prefWidth="120"/>
+                <Label text="Camera:"/>
+                <ComboBox fx:id="cbCameraTarget" prefWidth="120"/>
                 <Label text="Epoch:"/>
                 <ComboBox fx:id="cbEpochFormat" prefWidth="100"/>
                 <TextField fx:id="tfEpochValue" prefWidth="220" promptText="2024-01-15T12:00:00"/>
@@ -60,17 +60,13 @@
             <!-- Right: Viewer Tabs -->
             <TabPane fx:id="viewerTabs" tabClosingPolicy="UNAVAILABLE" style="-fx-padding: 0;" minHeight="400">
                 <Tab text="3D View">
-                    <VBox fx:id="tab3DContent" spacing="5" style="-fx-padding: 5;">
-                        <HBox spacing="10">
-                            <Label text="Camera Target:"/>
-                            <Button text="Earth" onAction="#onTargetEarth"/>
-                            <Button text="Moon" onAction="#onTargetMoon"/>
-                            <Button text="Spacecraft" onAction="#onTargetSpacecraft"/>
-                        </HBox>
-                    </VBox>
+                    <VBox fx:id="tab3DContent" spacing="5" style="-fx-padding: 5;"/>
                 </Tab>
                 <Tab text="2D View">
                     <VBox fx:id="tab2DContent" spacing="5" style="-fx-padding: 5;"/>
+                </Tab>
+                <Tab text="Bodies">
+                    <VBox fx:id="tabBodiesContent" spacing="5" style="-fx-padding: 10;"/>
                 </Tab>
             </TabPane>
         </SplitPane>
@@ -84,6 +80,10 @@
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Frame:"/>
                     <ComboBox fx:id="cbWaypointFrame" prefWidth="180"/>
+                </HBox>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Body:"/>
+                    <ComboBox fx:id="cbWaypointBody" prefWidth="120"/>
                 </HBox>
                 <GridPane hgap="10" vgap="5">
                     <Label fx:id="lblOrbit1" text="a (km):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>

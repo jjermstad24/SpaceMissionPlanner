@@ -10,21 +10,26 @@ import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ColorPicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.util.Callback;
+import javafx.geometry.Pos;
 
 import org.orekit.orbits.Orbit;
 import org.orekit.time.AbsoluteDate;
@@ -36,6 +41,7 @@ import java.util.ArrayList;
 public class MainController {
 
     @FXML private ComboBox<String> cbWaypointFrame;
+    @FXML private ComboBox<String> cbWaypointBody;
     @FXML private Label lblOrbit1;
     @FXML private Label lblOrbit2;
     @FXML private Label lblOrbit3;
@@ -61,6 +67,7 @@ public class MainController {
     @FXML private TabPane viewerTabs;
     @FXML private VBox tab3DContent;
     @FXML private VBox tab2DContent;
+    @FXML private VBox tabBodiesContent;
     @FXML private Label statusLabel;
     @FXML private Label inputPanelTitle;
     @FXML private VBox orbitInputPanel;
@@ -70,10 +77,9 @@ public class MainController {
     @FXML private TextField tfCoastDuration;
     @FXML private TextField tfCoastStepSize;
     @FXML private ColorPicker eventColorPicker;
-    @FXML private ComboBox<String> cbCelestialBody;
+    @FXML private ComboBox<String> cbCameraTarget;
     @FXML private ComboBox<String> cbEpochFormat;
     @FXML private TextField tfEpochValue;
-    @FXML private TextField tfStepSize;
 
     private static final String[] COLOR_PALETTE = {
         "#00FFFF", "#FF4444", "#44FF44", "#FFFF44",
@@ -190,19 +196,19 @@ public class MainController {
             }
         });
 
+        cbWaypointBody.getItems().addAll("Earth", "Moon");
+        cbWaypointBody.getSelectionModel().select(0);
+
         cbEpochFormat.getItems().addAll("UTC", "Julian Date", "MJD");
         cbEpochFormat.getSelectionModel().select(0);
         tfEpochValue.setText("2024-01-15T12:00:00");
 
-        cbCelestialBody.getItems().addAll("Earth", "Moon");
-        cbCelestialBody.getSelectionModel().select(0);
-        cbCelestialBody.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+        cbCameraTarget.getItems().addAll("Earth", "Moon", "Spacecraft");
+        cbCameraTarget.getSelectionModel().select(0);
+        cbCameraTarget.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
-                CelestialBody selected = newVal.equals("Moon") ? CelestialBody.MOON : CelestialBody.EARTH;
-                physicsService.setCelestialBody(selected);
-                viewer3D.setCelestialBody(selected);
-                viewer2D.setCelestialBody(selected);
-                statusLabel.setText("Switched to " + selected.getDisplayName());
+                viewer3D.setTarget(newVal.toLowerCase());
+                statusLabel.setText("Camera target: " + newVal);
             }
         });
 
@@ -214,10 +220,73 @@ public class MainController {
         });
 
         viewer3D = new Viewer3D();
+        viewer3D.setOrekitService(physicsService);
         tab3DContent.getChildren().add(0, viewer3D);
 
         viewer2D = new Viewer2D();
         tab2DContent.getChildren().add(viewer2D);
+
+        initBodiesTab();
+    }
+
+    private CelestialBody inertialBody = CelestialBody.EARTH;
+
+    private void initBodiesTab() {
+        ToggleGroup inertialGroup = new ToggleGroup();
+        for (CelestialBody body : CelestialBody.values()) {
+            HBox row = new HBox(10);
+            row.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+            CheckBox visCb = new CheckBox();
+            visCb.setSelected(true);
+            visCb.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                if (body == CelestialBody.EARTH) {
+                    viewer3D.setEarthVisible(newVal);
+                } else if (body == CelestialBody.MOON) {
+                    viewer3D.setMoonVisible(newVal);
+                }
+            });
+
+            Label nameLabel = new Label(body.getDisplayName());
+            nameLabel.setPrefWidth(60);
+
+            CheckBox trailCb = new CheckBox();
+            trailCb.setSelected(true);
+            trailCb.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                viewer3D.setBodyTrailVisible(body, newVal);
+            });
+
+            Label trailLabel = new Label("Trail");
+            trailLabel.setStyle("-fx-font-size: 10;");
+
+            CheckBox gravityCb = new CheckBox();
+            gravityCb.setSelected(true);
+            gravityCb.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                physicsService.setGravityEnabled(body, newVal);
+                statusLabel.setText((newVal ? "Enabled" : "Disabled") + " gravity for " + body.getDisplayName());
+            });
+
+            Label gravityLabel = new Label("Grav");
+            gravityLabel.setStyle("-fx-font-size: 10;");
+
+            RadioButton inertialRb = new RadioButton("Inertial");
+            inertialRb.setToggleGroup(inertialGroup);
+            inertialRb.setStyle("-fx-font-size: 10;");
+            if (body == CelestialBody.EARTH) {
+                inertialRb.setSelected(true);
+                inertialBody = CelestialBody.EARTH;
+            }
+            int bodyIdx = body.ordinal();
+            inertialRb.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal) {
+                    inertialBody = CelestialBody.values()[bodyIdx];
+                    statusLabel.setText("Inertial body: " + inertialBody.getDisplayName());
+                }
+            });
+
+            row.getChildren().addAll(visCb, nameLabel, trailCb, trailLabel, gravityCb, gravityLabel, inertialRb);
+            tabBodiesContent.getChildren().add(row);
+        }
     }
 
     private AbsoluteDate parseEpoch() {
@@ -350,6 +419,8 @@ public class MainController {
         cbWaypointFrame.getSelectionModel().select(comboVal);
         updateOrbitLabels(comboVal);
 
+        cbWaypointBody.getSelectionModel().select(wp.getCelestialBody() == CelestialBody.MOON ? "Moon" : "Earth");
+
         switch (frame) {
             case "INERTIAL":
                 tfOrbit1.setText(String.valueOf(wp.getInertialX()));
@@ -476,6 +547,8 @@ public class MainController {
     private void updateWaypointFromForm(Waypoint wp) {
         String frame = selectedWaypointFrame();
         wp.setReferenceFrame(frame);
+        String bodySel = cbWaypointBody.getSelectionModel().getSelectedItem();
+        wp.setCelestialBody("Moon".equals(bodySel) ? CelestialBody.MOON : CelestialBody.EARTH);
         switch (frame) {
             case "INERTIAL":
                 wp.setInertialX(Double.parseDouble(tfOrbit1.getText()));
@@ -595,13 +668,17 @@ public class MainController {
 
             List<List<TrajectoryPoint>> segments = new ArrayList<>();
             List<Color> segmentColors = new ArrayList<>();
+            List<CelestialBody> segmentBodies = new ArrayList<>();
             TrajectoryPoint lastPoint = null;
+            CelestialBody currentBody = CelestialBody.EARTH;
 
             for (int i = 0; i < events.size(); i++) {
                 MissionEvent event = events.get(i);
 
                 if (event instanceof Waypoint) {
                     Waypoint wp = (Waypoint) event;
+                    currentBody = wp.getCelestialBody();
+                    physicsService.setCelestialBody(currentBody);
                     TrajectoryPoint point;
                     switch (wp.getReferenceFrame()) {
                         case "INERTIAL":
@@ -641,6 +718,7 @@ public class MainController {
                         int steps = Math.max(1, (int) (c.getDuration() / c.getStepSize()));
                         List<TrajectoryPoint> coastTraj = physicsService.propagateWithCoast(lastPoint, c.getDuration(), steps);
                         segments.add(coastTraj);
+                        segmentBodies.add(currentBody);
                         segmentColors.add(Color.web(event.getColorHex()));
                         lastPoint = coastTraj.get(coastTraj.size() - 1);
                     }
@@ -648,6 +726,13 @@ public class MainController {
                 }
 
                 statusLabel.setText("Processed event " + (i + 1) + "/" + events.size());
+            }
+
+            // Translate Moon-relative segments to Earth-centered for rendering
+            for (int i = 0; i < segments.size(); i++) {
+                if (segmentBodies.get(i) != CelestialBody.EARTH) {
+                    segments.set(i, physicsService.translateToEarthCentered(segments.get(i), segmentBodies.get(i)));
+                }
             }
 
             viewer3D.setTrajectoryGroups(segments, segmentColors);
@@ -659,6 +744,26 @@ public class MainController {
                 // ephemeris unavailable, Moon not shown
             }
 
+            // Compute body trails for non-inertial celestial bodies
+            double totalDuration = 0;
+            for (List<TrajectoryPoint> seg : segments) {
+                if (seg.size() >= 2) {
+                    double start = seg.get(0).date.durationFrom(epoch);
+                    double end = seg.get(seg.size() - 1).date.durationFrom(epoch);
+                    totalDuration = Math.max(totalDuration, end - start);
+                }
+            }
+            if (totalDuration < 60) totalDuration = 86400 * 28;
+
+            for (CelestialBody body : CelestialBody.values()) {
+                if (body != inertialBody) {
+                    List<TrajectoryPoint> trail = physicsService.getCelestialBodyTrajectory(body, epoch, totalDuration, 360);
+                    viewer3D.setBodyTrail(body, trail);
+                } else {
+                    viewer3D.setBodyTrail(body, null);
+                }
+            }
+
             int totalPoints = 0;
             for (List<TrajectoryPoint> seg : segments) totalPoints += seg.size();
             statusLabel.setText("Mission complete - " + totalPoints + " points");
@@ -667,20 +772,5 @@ public class MainController {
             statusLabel.setText("Error: " + ex.getMessage());
             ex.printStackTrace();
         }
-    }
-
-    @FXML
-    private void onTargetEarth() {
-        viewer3D.setTarget("earth");
-    }
-
-    @FXML
-    private void onTargetMoon() {
-        viewer3D.setTarget("moon");
-    }
-
-    @FXML
-    private void onTargetSpacecraft() {
-        viewer3D.setTarget("spacecraft");
     }
 }

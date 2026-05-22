@@ -1,6 +1,7 @@
 package com.spacemissionplanner.model;
 
 public class Waypoint extends MissionEvent {
+    private CelestialBody celestialBody = CelestialBody.EARTH;
     private String referenceFrame = "ORBITAL_ELEMENTS";
 
     private double semiMajorAxis;
@@ -38,6 +39,9 @@ public class Waypoint extends MissionEvent {
         this.argPeriapsis = argPeriapsis;
         this.trueAnomaly = trueAnomaly;
     }
+
+    public CelestialBody getCelestialBody() { return celestialBody; }
+    public void setCelestialBody(CelestialBody celestialBody) { this.celestialBody = celestialBody; }
 
     public String getReferenceFrame() { return referenceFrame; }
     public void setReferenceFrame(String referenceFrame) { this.referenceFrame = referenceFrame; }

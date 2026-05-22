@@ -1,6 +1,7 @@
 package com.spacemissionplanner.ui;
 
 import com.spacemissionplanner.model.CelestialBody;
+import com.spacemissionplanner.physics.OrekitService;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
 import javafx.animation.AnimationTimer;
 import javafx.geometry.Point3D;
@@ -23,6 +24,10 @@ import javafx.scene.transform.Affine;
 import javafx.scene.transform.Rotate;
 
 import javafx.scene.shape.Box;
+import javafx.scene.control.Button;
+import javafx.scene.control.Slider;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +47,7 @@ public class Viewer3D extends VBox {
     private Group moonGroup;
     private Group orbitGroup;
     private Group spacecraftGroup;
+    private Group bodyTrailGroup;
 
     private Sphere earthSphere;
     private Sphere moonSphere;
@@ -62,9 +68,13 @@ public class Viewer3D extends VBox {
     private int currentIndex = 0;
     private long lastUpdateTime = 0;
     private static final long UPDATE_INTERVAL_MS = 50;
+    private OrekitService orekitService;
+    private boolean isPlaying = true;
+    private double playbackSpeed = 1.0;
+    private Slider timelineSlider;
+    private boolean scrubbing = false;
 
     public Viewer3D() {
-        setSpacing(5);
         setFillWidth(true);
         VBox.setVgrow(this, Priority.ALWAYS);
         setMinHeight(400);
@@ -72,6 +82,17 @@ public class Viewer3D extends VBox {
         setStyle("-fx-background-color: #001122;");
 
         init3DScene();
+
+        BorderPane content = new BorderPane();
+        javafx.scene.layout.StackPane centerWrapper = new javafx.scene.layout.StackPane(subScene);
+        content.setCenter(centerWrapper);
+        subScene.widthProperty().bind(centerWrapper.widthProperty());
+        subScene.heightProperty().bind(centerWrapper.heightProperty());
+        HBox controls = initPlaybackControls();
+        content.setBottom(controls);
+        getChildren().add(content);
+        VBox.setVgrow(content, Priority.ALWAYS);
+
         startAnimationTimer();
     }
 
@@ -91,7 +112,6 @@ public class Viewer3D extends VBox {
 
     public void setTarget(String target) {
         this.target = target;
-        camDist = 5;
         updateTargetPosition();
         updateCamera();
     }
@@ -159,11 +179,6 @@ public class Viewer3D extends VBox {
         subScene.setCamera(camera);
         subScene.setFill(Color.rgb(10, 10, 20));
 
-        widthProperty().addListener((obs, oldVal, newVal) -> 
-            subScene.setWidth(newVal.doubleValue()));
-        heightProperty().addListener((obs, oldVal, newVal) -> 
-            subScene.setHeight(newVal.doubleValue()));
-
         subScene.setOnMousePressed(e -> {
             mouseX = e.getSceneX();
             mouseY = e.getSceneY();
@@ -190,13 +205,12 @@ public class Viewer3D extends VBox {
         subScene.setOnMouseReleased(e -> dragging = false);
 
         subScene.setOnScroll(e -> {
-            camDist += e.getDeltaY() * 0.01;
-            camDist = Math.max(1.5, Math.min(50, camDist));
+            camDist += e.getDeltaY() * 0.05;
+            camDist = Math.max(1.5, Math.min(500, camDist));
             camera.setTranslateZ(-camDist);
             e.consume();
         });
 
-        getChildren().add(subScene);
         updateCamera();
     }
 
@@ -207,6 +221,18 @@ public class Viewer3D extends VBox {
         if (trajectory != null && !trajectory.isEmpty()) {
             setTrajectoryGroups(groups, groupColors);
         }
+    }
+
+    public void setOrekitService(OrekitService service) {
+        this.orekitService = service;
+    }
+
+    public void setEarthVisible(boolean visible) {
+        if (earthGroup != null) earthGroup.setVisible(visible);
+    }
+
+    public void setMoonVisible(boolean visible) {
+        if (moonGroup != null) moonGroup.setVisible(visible);
     }
 
     private void createMoon() {
@@ -396,6 +422,65 @@ public class Viewer3D extends VBox {
         sceneRoot.getChildren().add(orbitGroup);
     }
 
+    private void createBodyTrails() {
+        bodyTrailGroup = new Group();
+        sceneRoot.getChildren().add(bodyTrailGroup);
+    }
+
+    public void setBodyTrail(CelestialBody body, List<TrajectoryPoint> trail) {
+        // remove old trail for this body
+        bodyTrailGroup.getChildren().removeIf(n -> {
+            Object b = n.getProperties().get("body");
+            return b != null && b.equals(body);
+        });
+        if (trail == null || trail.isEmpty()) return;
+
+        PhongMaterial mat = new PhongMaterial();
+        Color color = body == CelestialBody.MOON ? Color.rgb(200, 200, 200, 0.6) : Color.rgb(60, 120, 255, 0.4);
+        mat.setDiffuseColor(color);
+        mat.setSpecularColor(Color.TRANSPARENT);
+
+        Group group = new Group();
+        group.getProperties().put("body", body);
+
+        for (int i = 0; i < trail.size() - 1; i++) {
+            TrajectoryPoint p1 = trail.get(i);
+            TrajectoryPoint p2 = trail.get(i + 1);
+            double x1 = p1.x * visualScale;
+            double y1 = p1.z * visualScale;
+            double z1 = p1.y * visualScale;
+            double x2 = p2.x * visualScale;
+            double y2 = p2.z * visualScale;
+            double z2 = p2.y * visualScale;
+            double dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+            double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (len < 0.0001) continue;
+
+            Box seg = new Box(0.01, 0.01, len);
+            seg.setMaterial(mat);
+            seg.setTranslateX((x1 + x2) / 2);
+            seg.setTranslateY((y1 + y2) / 2);
+            seg.setTranslateZ((z1 + z2) / 2);
+            Point3D dir = new Point3D(dx / len, dy / len, dz / len);
+            Point3D zAxis = new Point3D(0, 0, 1);
+            double dot = zAxis.dotProduct(dir);
+            if (dot < 0.9999) {
+                seg.setRotationAxis(zAxis.crossProduct(dir));
+                seg.setRotate(Math.toDegrees(Math.acos(dot)));
+            }
+            group.getChildren().add(seg);
+        }
+        bodyTrailGroup.getChildren().add(group);
+    }
+
+    public void setBodyTrailVisible(CelestialBody body, boolean visible) {
+        for (var n : bodyTrailGroup.getChildren()) {
+            if (body.equals(n.getProperties().get("body"))) {
+                n.setVisible(visible);
+            }
+        }
+    }
+
     public void setTrajectory(List<TrajectoryPoint> trajectory) {
         List<List<TrajectoryPoint>> singleGroup = new ArrayList<>();
         singleGroup.add(trajectory);
@@ -415,6 +500,11 @@ public class Viewer3D extends VBox {
         this.trajectory = flat;
         this.currentIndex = 0;
 
+        if (timelineSlider != null && trajectory != null && !trajectory.isEmpty()) {
+            timelineSlider.setMax(trajectory.size() - 1);
+            timelineSlider.setValue(0);
+        }
+
         if (trajectory == null || trajectory.isEmpty()) {
             spacecraftGroup.setVisible(false);
             orbitGroup.getChildren().clear();
@@ -427,9 +517,12 @@ public class Viewer3D extends VBox {
             if (r > maxR) maxR = r;
         }
 
-        double initCamDist = Math.max(maxR / bodyRadiusM * 2.5, 4);
-        camDist = Math.min(initCamDist, 120);
-        camera.setTranslateZ(-camDist);
+        // Only auto-adjust camera distance for the first trajectory load
+        if (orbitGroup.getChildren().isEmpty()) {
+            double initCamDist = Math.max(maxR / bodyRadiusM * 2.5, 4);
+            camDist = Math.min(initCamDist, 120);
+            camera.setTranslateZ(-camDist);
+        }
 
         orbitGroup.getChildren().clear();
 
@@ -528,14 +621,28 @@ public class Viewer3D extends VBox {
             @Override
             public void handle(long now) {
                 if (trajectory != null && trajectory.size() > 0) {
-                    if (now - lastUpdateTime > UPDATE_INTERVAL_MS * 1_000_000) {
+                    double intervalMs = UPDATE_INTERVAL_MS / playbackSpeed;
+                    if (isPlaying && now - lastUpdateTime > intervalMs * 1_000_000) {
                         updateSpacecraftPosition();
                         currentIndex = (currentIndex + 1) % trajectory.size();
                         lastUpdateTime = now;
+
+                        if (!scrubbing && timelineSlider != null) {
+                            timelineSlider.setValue(currentIndex);
+                        }
+
+                        TrajectoryPoint p = trajectory.get(currentIndex);
+                        if (orekitService != null && p.date != null) {
+                            try {
+                                setMoonPosition(orekitService.getMoonPosition(p.date));
+                            } catch (Exception e) {
+                                // fallback: keep current moon position
+                            }
+                        }
                     }
                 }
 
-                if (target.equals("spacecraft")) {
+                if (target.equals("spacecraft") || target.equals("moon")) {
                     updateTargetPosition();
                 }
 
@@ -543,5 +650,59 @@ public class Viewer3D extends VBox {
             }
         };
         timer.start();
+    }
+
+    private HBox initPlaybackControls() {
+        HBox controls = new HBox(8);
+        controls.setStyle("-fx-padding: 5 8; -fx-background-color: #2a3a4a; -fx-border-color: #0a1a2a; -fx-border-width: 1 0 0 0;");
+        controls.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+        Button playBtn = new Button("||");
+        playBtn.setStyle("-fx-font-weight: bold; -fx-background-color: #334; -fx-text-fill: white;");
+        playBtn.setOnAction(e -> {
+            isPlaying = !isPlaying;
+            playBtn.setText(isPlaying ? "||" : "\u25B6");
+            lastUpdateTime = System.nanoTime();
+        });
+
+        timelineSlider = new Slider(0, 1, 0);
+        timelineSlider.setPrefWidth(300);
+        timelineSlider.setStyle("-fx-control-inner-background: #445;");
+        timelineSlider.setOnMousePressed(e -> scrubbing = true);
+        timelineSlider.setOnMouseReleased(e -> {
+            scrubbing = false;
+            if (trajectory != null && !trajectory.isEmpty()) {
+                currentIndex = Math.max(0, Math.min(trajectory.size() - 1, (int) (timelineSlider.getValue())));
+                updateSpacecraftPosition();
+                TrajectoryPoint p = trajectory.get(currentIndex);
+                if (orekitService != null && p.date != null) {
+                    try {
+                        setMoonPosition(orekitService.getMoonPosition(p.date));
+                    } catch (Exception ex) {}
+                }
+            }
+        });
+        timelineSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (scrubbing && trajectory != null && !trajectory.isEmpty()) {
+                currentIndex = Math.max(0, Math.min(trajectory.size() - 1, newVal.intValue()));
+                updateSpacecraftPosition();
+            }
+        });
+
+        Slider speedSlider = new Slider(0.1, 5.0, 1.0);
+        speedSlider.setPrefWidth(120);
+        speedSlider.setStyle("-fx-control-inner-background: #445;");
+        speedSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            playbackSpeed = newVal.doubleValue();
+        });
+
+        javafx.scene.control.Label speedLabel = new javafx.scene.control.Label("1.0x");
+        speedLabel.setStyle("-fx-text-fill: #aaa; -fx-font-size: 11;");
+        speedSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            speedLabel.setText(String.format("%.1fx", newVal.doubleValue()));
+        });
+
+        controls.getChildren().addAll(playBtn, timelineSlider, speedSlider, speedLabel);
+        return controls;
     }
 }
