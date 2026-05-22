@@ -18,7 +18,10 @@
             </Menu>
             <Menu text="Mission">
                 <MenuItem text="Add Waypoint" onAction="#onAddWaypoint"/>
-                <MenuItem text="Run Mission" onAction="#onRunMission"/>
+                <MenuItem text="Remove Waypoint" onAction="#onRemoveWaypoint"/>
+                <SeparatorMenuItem/>
+                <MenuItem text="Run Selected" onAction="#onRunMission"/>
+                <MenuItem text="Run All Waypoints" onAction="#onRunAllWaypoints"/>
             </Menu>
         </MenuBar>
     </top>
@@ -28,21 +31,37 @@
             <!-- Left: Timeline -->
             <VBox spacing="10" style="-fx-padding: 10;">
                 <Label text="TIMELINE" style="-fx-font-weight: bold;"/>
-                <ListView fx:id="timelineList" prefHeight="400"/>
-                <Button text="+ Add Waypoint" onAction="#onAddWaypoint"/>
+                <ListView fx:id="timelineList" prefHeight="400" onMouseClicked="#onWaypointSelected"/>
+                <HBox spacing="5">
+                    <Button text="+ Add" onAction="#onAddWaypoint"/>
+                    <Button text="- Remove" onAction="#onRemoveWaypoint"/>
+                </HBox>
+                <Button text="Run All Waypoints" onAction="#onRunAllWaypoints"
+                        style="-fx-font-weight: bold;"/>
             </VBox>
 
-            <!-- Right: 3D Viewer -->
-            <VBox fx:id="viewerContainer" spacing="5" style="-fx-padding: 10;">
-                <Label text="3D VIEW (OpenGL)" style="-fx-font-weight: bold;"/>
-                <HBox spacing="10">
-                    <Button text="Reset View" onAction="#onResetView"/>
-                    <Button text="Rotate X+" onAction="#onRotateX"/>
-                    <Button text="Rotate X-" onAction="#onRotateXNeg"/>
-                    <Button text="Rotate Y+" onAction="#onRotateY"/>
-                    <Button text="Rotate Y-" onAction="#onRotateYNeg"/>
-                </HBox>
-            </VBox>
+            <!-- Right: Viewer Tabs -->
+            <TabPane fx:id="viewerTabs" tabClosingPolicy="UNAVAILABLE" style="-fx-padding: 0;" minHeight="400">
+                <Tab text="3D View">
+                    <VBox fx:id="tab3DContent" spacing="5" style="-fx-padding: 5;">
+                        <HBox spacing="10">
+                            <Button text="Reset View" onAction="#onResetView"/>
+                            <Button text="Rotate X+" onAction="#onRotateX"/>
+                            <Button text="Rotate X-" onAction="#onRotateXNeg"/>
+                            <Button text="Rotate Y+" onAction="#onRotateY"/>
+                            <Button text="Rotate Y-" onAction="#onRotateYNeg"/>
+                        </HBox>
+                        <HBox spacing="10">
+                            <Label text="Camera Target:"/>
+                            <Button text="Earth" onAction="#onTargetEarth"/>
+                            <Button text="Spacecraft" onAction="#onTargetSpacecraft"/>
+                        </HBox>
+                    </VBox>
+                </Tab>
+                <Tab text="2D View">
+                    <VBox fx:id="tab2DContent" spacing="5" style="-fx-padding: 5;"/>
+                </Tab>
+            </TabPane>
         </SplitPane>
     </center>
 

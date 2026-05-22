@@ -41,6 +41,14 @@
             <artifactId>javafx-controls</artifactId>
             <version>${javafx.version}</version>
         </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
@@ -76,11 +84,11 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.spacemissionplanner.Main</mainClass>
-                    <environment>
-                        <glass.platform>Monocle</glass.platform>
-                        <eglfb.useEGL>false</eglfb.useEGL>
-                        <prism.order>sw</prism.order>
-                    </environment>
+                    <vmArgs>
+                        <vmArg>--add-opens</vmArg>
+                        <vmArg>javafx.graphics/com.sun.javafx.scene=ALL-UNNAMED</vmArg>
+                        <vmArg>-Dprism.order=sw</vmArg>
+                    </vmArgs>
                 </configuration>
             </plugin>
         </plugins>

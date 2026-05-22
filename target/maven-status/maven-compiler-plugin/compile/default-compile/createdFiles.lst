@@ -1,5 +1,9 @@
-com/spacemissionplanner/ui/Viewer3D.class
-com/spacemissionplanner/physics/OrekitService$TrajectoryPoint.class
-com/spacemissionplanner/physics/OrekitService.class
-com/spacemissionplanner/ui/MainController.class
-com/spacemissionplanner/Main.class
+com\spacemissionplanner\Main.class
+com\spacemissionplanner\ui\Viewer3D.class
+com\spacemissionplanner\ui\Viewer2D$1.class
+com\spacemissionplanner\ui\Viewer2D.class
+com\spacemissionplanner\physics\OrekitService.class
+com\spacemissionplanner\ui\MainController.class
+com\spacemissionplanner\ui\Viewer3D$1.class
+com\spacemissionplanner\model\Waypoint.class
+com\spacemissionplanner\physics\OrekitService$TrajectoryPoint.class

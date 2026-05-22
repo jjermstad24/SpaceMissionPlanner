@@ -76,10 +76,10 @@ space-mission-planner/
 - [x] Camera controls (X/Y rotation buttons)
 
 ### Phase 5: Timeline & Mission Model
-- [ ] Timeline panel (list of waypoints)
-- [ ] Add/remove waypoints
-- [ ] Connect waypoints with coast arcs
-- [ ] "Run Mission" executes all waypoints in sequence
+- [x] Timeline panel (list of waypoints)
+- [x] Add/remove waypoints
+- [x] Connect waypoints with coast arcs
+- [x] "Run Mission" executes all waypoints in sequence
 
 ---
 

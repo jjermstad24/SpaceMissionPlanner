@@ -70,6 +70,43 @@ public class OrekitService {
         return points;
     }
 
+    public List<TrajectoryPoint> computeCoastArc(TrajectoryPoint endPoint, 
+            double targetA, double targetE, double targetI, 
+            double targetRaan, double targetArgPe, double targetTa) {
+        List<TrajectoryPoint> coastPoints = new ArrayList<>();
+        
+        double duration = 600;
+        int steps = 20;
+        double stepSize = duration / steps;
+        
+        Orbit startOrbit = new KeplerianOrbit(
+            endPoint.x, endPoint.y, endPoint.z,
+            endPoint.vx, endPoint.vy, endPoint.vz,
+            PositionAngleType.TRUE,
+            inertialFrame, endPoint.date, EARTH_GM
+        );
+        
+        Propagator propagator = createPropagator(startOrbit);
+        
+        for (int i = 1; i <= steps; i++) {
+            AbsoluteDate targetDate = endPoint.date.shiftedBy(i * stepSize);
+            SpacecraftState state = propagator.propagate(targetDate);
+            PVCoordinates pv = state.getPVCoordinates();
+            
+            coastPoints.add(new TrajectoryPoint(
+                targetDate,
+                pv.getPosition().getX(),
+                pv.getPosition().getY(),
+                pv.getPosition().getZ(),
+                pv.getVelocity().getX(),
+                pv.getVelocity().getY(),
+                pv.getVelocity().getZ()
+            ));
+        }
+        
+        return coastPoints;
+    }
+
     public static class TrajectoryPoint {
         public final AbsoluteDate date;
         public final double x, y, z;
