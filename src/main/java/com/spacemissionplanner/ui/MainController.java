@@ -1,5 +1,6 @@
 package com.spacemissionplanner.ui;
 
+import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.model.Coast;
 import com.spacemissionplanner.model.Maneuver;
 import com.spacemissionplanner.model.MissionEvent;
@@ -69,6 +70,7 @@ public class MainController {
     @FXML private TextField tfCoastDuration;
     @FXML private TextField tfCoastStepSize;
     @FXML private ColorPicker eventColorPicker;
+    @FXML private ComboBox<String> cbCelestialBody;
     @FXML private ComboBox<String> cbEpochFormat;
     @FXML private TextField tfEpochValue;
     @FXML private TextField tfStepSize;
@@ -191,6 +193,18 @@ public class MainController {
         cbEpochFormat.getItems().addAll("UTC", "Julian Date", "MJD");
         cbEpochFormat.getSelectionModel().select(0);
         tfEpochValue.setText("2024-01-15T12:00:00");
+
+        cbCelestialBody.getItems().addAll("Earth", "Moon");
+        cbCelestialBody.getSelectionModel().select(0);
+        cbCelestialBody.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                CelestialBody selected = newVal.equals("Moon") ? CelestialBody.MOON : CelestialBody.EARTH;
+                physicsService.setCelestialBody(selected);
+                viewer3D.setCelestialBody(selected);
+                viewer2D.setCelestialBody(selected);
+                statusLabel.setText("Switched to " + selected.getDisplayName());
+            }
+        });
 
         cbManeuverFrame.getItems().addAll("EME2000 (Inertial)", "LVLH (RTN)");
         cbManeuverFrame.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
@@ -639,6 +653,12 @@ public class MainController {
             viewer3D.setTrajectoryGroups(segments, segmentColors);
             viewer2D.setTrajectoryGroups(segments, segmentColors);
 
+            try {
+                viewer3D.setMoonPosition(physicsService.getMoonPosition(epoch));
+            } catch (Exception e) {
+                // ephemeris unavailable, Moon not shown
+            }
+
             int totalPoints = 0;
             for (List<TrajectoryPoint> seg : segments) totalPoints += seg.size();
             statusLabel.setText("Mission complete - " + totalPoints + " points");
@@ -652,6 +672,11 @@ public class MainController {
     @FXML
     private void onTargetEarth() {
         viewer3D.setTarget("earth");
+    }
+
+    @FXML
+    private void onTargetMoon() {
+        viewer3D.setTarget("moon");
     }
 
     @FXML

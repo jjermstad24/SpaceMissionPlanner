@@ -28,6 +28,8 @@
                 </Menu>
             </MenuBar>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 5 10; -fx-background-color: #e0e0e0;">
+                <Label text="Body:"/>
+                <ComboBox fx:id="cbCelestialBody" prefWidth="120"/>
                 <Label text="Epoch:"/>
                 <ComboBox fx:id="cbEpochFormat" prefWidth="100"/>
                 <TextField fx:id="tfEpochValue" prefWidth="220" promptText="2024-01-15T12:00:00"/>
@@ -62,6 +64,7 @@
                         <HBox spacing="10">
                             <Label text="Camera Target:"/>
                             <Button text="Earth" onAction="#onTargetEarth"/>
+                            <Button text="Moon" onAction="#onTargetMoon"/>
                             <Button text="Spacecraft" onAction="#onTargetSpacecraft"/>
                         </HBox>
                     </VBox>

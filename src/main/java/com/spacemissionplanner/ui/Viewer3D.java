@@ -39,10 +39,12 @@ public class Viewer3D extends VBox {
     private SubScene subScene;
     private Group sceneRoot;
     private Group earthGroup;
+    private Group moonGroup;
     private Group orbitGroup;
     private Group spacecraftGroup;
 
     private Sphere earthSphere;
+    private Sphere moonSphere;
     private PerspectiveCamera camera;
     private Affine cameraOrient = new Affine();
     private double camDist = 5;
@@ -99,7 +101,16 @@ public class Viewer3D extends VBox {
             case "spacecraft":
                 if (trajectory != null && !trajectory.isEmpty()) {
                     TrajectoryPoint p = trajectory.get(currentIndex);
-                    targetPosition = new Point3D(p.x * VISUAL_SCALE, p.z * VISUAL_SCALE, p.y * VISUAL_SCALE);
+                    targetPosition = new Point3D(p.x * visualScale, p.z * visualScale, p.y * visualScale);
+                }
+                break;
+            case "moon":
+                if (moonGroup != null) {
+                    targetPosition = new Point3D(
+                        moonGroup.getTranslateX(),
+                        moonGroup.getTranslateY(),
+                        moonGroup.getTranslateZ()
+                    );
                 }
                 break;
             case "earth":
@@ -114,6 +125,7 @@ public class Viewer3D extends VBox {
 
         createStarfield();
         createEarth();
+        createMoon();
         createSpacecraft();
         createOrbitPath();
 
@@ -192,9 +204,28 @@ public class Viewer3D extends VBox {
         this.currentBody = body;
         this.bodyRadiusM = body.getMeanRadius();
         this.visualScale = 1.0 / bodyRadiusM;
-        init3DScene();
         if (trajectory != null && !trajectory.isEmpty()) {
             setTrajectoryGroups(groups, groupColors);
+        }
+    }
+
+    private void createMoon() {
+        moonGroup = new Group();
+        PhongMaterial moonMaterial = new PhongMaterial();
+        moonMaterial.setDiffuseColor(Color.rgb(200, 200, 200));
+        moonMaterial.setSpecularColor(Color.rgb(80, 80, 80));
+        moonMaterial.setSpecularPower(16);
+        moonSphere = new Sphere(1737400.0 * visualScale);
+        moonSphere.setMaterial(moonMaterial);
+        moonGroup.getChildren().add(moonSphere);
+        sceneRoot.getChildren().add(moonGroup);
+    }
+
+    public void setMoonPosition(org.hipparchus.geometry.euclidean.threed.Vector3D posEME2000) {
+        if (posEME2000 != null && moonGroup != null) {
+            moonGroup.setTranslateX(posEME2000.getX() * visualScale);
+            moonGroup.setTranslateY(posEME2000.getZ() * visualScale);
+            moonGroup.setTranslateZ(posEME2000.getY() * visualScale);
         }
     }
 
@@ -219,23 +250,17 @@ public class Viewer3D extends VBox {
         }
         earthGroup = new Group();
 
-        PhongMaterial bodyMaterial = new PhongMaterial();
+        Image earthTexture = new Image(
+            getClass().getResourceAsStream("/com/spacemissionplanner/ui/earth_texture.jpg")
+        );
 
-        if (currentBody == CelestialBody.EARTH) {
-            Image earthTexture = new Image(
-                getClass().getResourceAsStream("/com/spacemissionplanner/ui/earth_texture.jpg")
-            );
-            bodyMaterial.setDiffuseMap(earthTexture);
-            bodyMaterial.setSpecularColor(Color.rgb(60, 60, 80));
-            bodyMaterial.setSpecularPower(32);
-        } else {
-            bodyMaterial.setDiffuseColor(Color.rgb(180, 180, 180));
-            bodyMaterial.setSpecularColor(Color.rgb(80, 80, 80));
-            bodyMaterial.setSpecularPower(16);
-        }
+        PhongMaterial earthMaterial = new PhongMaterial();
+        earthMaterial.setDiffuseMap(earthTexture);
+        earthMaterial.setSpecularColor(Color.rgb(60, 60, 80));
+        earthMaterial.setSpecularPower(32);
 
         earthSphere = new Sphere(1.0);
-        earthSphere.setMaterial(bodyMaterial);
+        earthSphere.setMaterial(earthMaterial);
         earthGroup.getChildren().add(earthSphere);
 
         createLatLonGrid();
@@ -396,14 +421,14 @@ public class Viewer3D extends VBox {
             return;
         }
 
-        double maxR = 0;
+        double maxR = bodyRadiusM;
         for (TrajectoryPoint p : trajectory) {
             double r = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
             if (r > maxR) maxR = r;
         }
 
-        double initCamDist = Math.max(maxR * VISUAL_SCALE * 2.5, 3);
-        camDist = Math.min(initCamDist, 50);
+        double initCamDist = Math.max(maxR / bodyRadiusM * 2.5, 4);
+        camDist = Math.min(initCamDist, 120);
         camera.setTranslateZ(-camDist);
 
         orbitGroup.getChildren().clear();
@@ -423,13 +448,13 @@ public class Viewer3D extends VBox {
                 TrajectoryPoint p1 = group.get(i);
                 TrajectoryPoint p2 = group.get(Math.min(i + step, group.size() - 1));
 
-                double x1 = p1.x * VISUAL_SCALE;
-                double y1 = p1.z * VISUAL_SCALE;
-                double z1 = p1.y * VISUAL_SCALE;
+                double x1 = p1.x * visualScale;
+                double y1 = p1.z * visualScale;
+                double z1 = p1.y * visualScale;
 
-                double x2 = p2.x * VISUAL_SCALE;
-                double y2 = p2.z * VISUAL_SCALE;
-                double z2 = p2.y * VISUAL_SCALE;
+                double x2 = p2.x * visualScale;
+                double y2 = p2.z * visualScale;
+                double z2 = p2.y * visualScale;
 
                 createLineSegment(x1, y1, z1, x2, y2, z2, orbitMaterial);
             }
@@ -478,9 +503,9 @@ public class Viewer3D extends VBox {
         if (trajectory == null || trajectory.isEmpty()) return;
 
         TrajectoryPoint p = trajectory.get(currentIndex);
-        spacecraftGroup.setTranslateX(p.x * VISUAL_SCALE);
-        spacecraftGroup.setTranslateY(p.z * VISUAL_SCALE);
-        spacecraftGroup.setTranslateZ(p.y * VISUAL_SCALE);
+        spacecraftGroup.setTranslateX(p.x * visualScale);
+        spacecraftGroup.setTranslateY(p.z * visualScale);
+        spacecraftGroup.setTranslateZ(p.y * visualScale);
 
         if (currentIndex < trajectory.size() - 1) {
             TrajectoryPoint next = trajectory.get(currentIndex + 1);

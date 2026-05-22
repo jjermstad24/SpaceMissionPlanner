@@ -1,5 +1,6 @@
 package com.spacemissionplanner.ui;
 
+import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
@@ -27,17 +28,22 @@ import java.util.List;
 
 public class Viewer2D extends VBox {
 
-    private static final double EARTH_GM = 3.986004418e14;
-    private static final double EARTH_SEMIMAJOR_AXIS = 6378137.0;
-    private static final double EARTH_FLATTENING = 1.0 / 298.257223563;
+    private CelestialBody body = CelestialBody.EARTH;
     private static final Frame EME2000 = FramesFactory.getEME2000();
     private OneAxisEllipsoid earth;
 
     private OneAxisEllipsoid getEarth() {
         if (earth == null) {
-            earth = new OneAxisEllipsoid(EARTH_SEMIMAJOR_AXIS, EARTH_FLATTENING, FramesFactory.getITRF(IERSConventions.IERS_2010, true));
+            earth = new OneAxisEllipsoid(body.getEllipsoidA(), body.getFlattening(),
+                FramesFactory.getITRF(IERSConventions.IERS_2010, true));
         }
         return earth;
+    }
+
+    public void setCelestialBody(CelestialBody body) {
+        this.body = body;
+        this.earth = null;
+        updatePlot();
     }
 
     private ComboBox<String> xSelector;
@@ -178,7 +184,7 @@ public class Viewer2D extends VBox {
                     new Vector3D(p.x, p.y, p.z),
                     new Vector3D(p.vx, p.vy, p.vz)
                 ),
-                EME2000, p.date, EARTH_GM
+                EME2000, p.date, body.getGm()
             );
             KeplerianOrbit kep = new KeplerianOrbit(orbit);
             switch (idx) {

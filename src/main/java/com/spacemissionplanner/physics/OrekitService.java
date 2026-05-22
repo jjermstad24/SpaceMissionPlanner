@@ -2,6 +2,7 @@ package com.spacemissionplanner.physics;
 
 import com.spacemissionplanner.model.CelestialBody;
 import org.hipparchus.geometry.euclidean.threed.Vector3D;
+import org.orekit.bodies.CelestialBodyFactory;
 import org.orekit.orbits.CartesianOrbit;
 import org.orekit.orbits.KeplerianOrbit;
 import org.orekit.orbits.Orbit;
@@ -18,6 +19,9 @@ import org.orekit.frames.Transform;
 import org.orekit.utils.IERSConventions;
 import org.orekit.utils.PVCoordinates;
 
+import org.orekit.data.DataContext;
+import org.orekit.data.DirectoryCrawler;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +35,18 @@ public class OrekitService {
 
     public OrekitService() {
         this.inertialFrame = FramesFactory.getEME2000();
+        configureDataLoading();
+    }
+
+    private void configureDataLoading() {
+        try {
+            java.io.File orekitData = new java.io.File("orekit-data");
+            if (orekitData.exists() && orekitData.isDirectory()) {
+                DataContext.getDefault().getDataProvidersManager().addProvider(new DirectoryCrawler(orekitData));
+            }
+        } catch (Exception e) {
+            // OreKit data directory not available; ephemeris will fall back to analytic
+        }
     }
 
     public void setCelestialBody(CelestialBody body) {
@@ -279,6 +295,28 @@ public class OrekitService {
             ));
         }
         return points;
+    }
+
+    public Vector3D getMoonPosition(AbsoluteDate date) {
+        AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
+        try {
+            org.orekit.bodies.CelestialBody moon = CelestialBodyFactory.getMoon();
+            return moon.getPVCoordinates(d, inertialFrame).getPosition();
+        } catch (Exception e) {
+            double a = 384400000;
+            double period = 27.321661 * 86400;
+            double n = 2 * Math.PI / period;
+            double m0 = Math.toRadians(135.0);
+            double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
+            double i = Math.toRadians(23.44);
+            double cosM = Math.cos(m);
+            double sinM = Math.sin(m);
+            return new Vector3D(
+                a * cosM,
+                a * sinM * Math.cos(i),
+                a * sinM * Math.sin(i)
+            );
+        }
     }
 
     public static class TrajectoryPoint {
