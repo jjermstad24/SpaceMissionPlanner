@@ -7,6 +7,7 @@ import com.spacemissionplanner.model.MissionEvent;
 import com.spacemissionplanner.model.Waypoint;
 import com.spacemissionplanner.physics.OrekitService;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
+import com.spacemissionplanner.util.ErrorHandler;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -95,6 +96,7 @@ public class MainController {
     @FXML
     private void initialize() {
         physicsService = new OrekitService();
+        ErrorHandler.setStatusConsumer(msg -> statusLabel.setText(msg));
         events = FXCollections.observableArrayList();
 
         Waypoint defaultWaypoint = new Waypoint("Waypoint 1", 6871, 0.0, 45.0, 0.0, 0.0, 0.0);
@@ -118,7 +120,8 @@ public class MainController {
                             String prefix = item instanceof Waypoint ? "[W] "
                                 : item instanceof Maneuver ? "[M] "
                                 : item instanceof Coast ? "[C] " : "";
-                            colorRect.setFill(Color.web(item.getColorHex()));
+                            colorRect.setFill(ErrorHandler.parseSafe(
+                                () -> Color.web(item.getColorHex()), Color.CYAN, "Parse event color"));
                             setGraphic(colorRect);
                             setText(prefix + item.toString());
                         }
@@ -128,18 +131,20 @@ public class MainController {
         });
 
         timelineList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (oldVal != null) {
-                if (oldVal instanceof Waypoint) {
-                    saveCurrentWaypointForm((Waypoint) oldVal);
-                } else if (oldVal instanceof Maneuver) {
-                    updateManeuverFromForm((Maneuver) oldVal);
-                } else if (oldVal instanceof Coast) {
-                    updateCoastFromForm((Coast) oldVal);
+            ErrorHandler.runSafe(() -> {
+                if (oldVal != null) {
+                    if (oldVal instanceof Waypoint) {
+                        saveCurrentWaypointForm((Waypoint) oldVal);
+                    } else if (oldVal instanceof Maneuver) {
+                        updateManeuverFromForm((Maneuver) oldVal);
+                    } else if (oldVal instanceof Coast) {
+                        updateCoastFromForm((Coast) oldVal);
+                    }
                 }
-            }
-            if (newVal != null) {
-                onEventSelected(newVal);
-            }
+                if (newVal != null) {
+                    onEventSelected(newVal);
+                }
+            }, "Save/load event form");
         });
 
         timelineList.setFixedCellSize(30);
@@ -230,6 +235,7 @@ public class MainController {
     }
 
     private CelestialBody inertialBody = CelestialBody.EARTH;
+    private boolean missionHasRun = false;
 
     private void initBodiesTab() {
         ToggleGroup inertialGroup = new ToggleGroup();
@@ -269,7 +275,7 @@ public class MainController {
             Label gravityLabel = new Label("Grav");
             gravityLabel.setStyle("-fx-font-size: 10;");
 
-            RadioButton inertialRb = new RadioButton("Inertial");
+            RadioButton inertialRb = new RadioButton("Coord");
             inertialRb.setToggleGroup(inertialGroup);
             inertialRb.setStyle("-fx-font-size: 10;");
             if (body == CelestialBody.EARTH) {
@@ -280,7 +286,10 @@ public class MainController {
             inertialRb.selectedProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal) {
                     inertialBody = CelestialBody.values()[bodyIdx];
-                    statusLabel.setText("Inertial body: " + inertialBody.getDisplayName());
+                    statusLabel.setText("Coordinate origin: " + inertialBody.getDisplayName());
+                    if (missionHasRun) {
+                        onRunAllWaypoints();
+                    }
                 }
             });
 
@@ -292,7 +301,7 @@ public class MainController {
     private AbsoluteDate parseEpoch() {
         String format = cbEpochFormat.getSelectionModel().getSelectedItem();
         String val = tfEpochValue.getText();
-        try {
+        return ErrorHandler.parseSafe(() -> {
             if ("Julian Date".equals(format)) {
                 double jd = Double.parseDouble(val);
                 double secFromJ2000 = (jd - 2451545.0) * 86400.0;
@@ -304,46 +313,45 @@ public class MainController {
             } else {
                 return new AbsoluteDate(val, TimeScalesFactory.getUTC());
             }
-        } catch (Exception e) {
-            statusLabel.setText("Invalid epoch: " + e.getMessage());
-            return AbsoluteDate.J2000_EPOCH;
-        }
+        }, AbsoluteDate.J2000_EPOCH, "Parse epoch");
     }
 
     private void saveCurrentWaypointForm(Waypoint wp) {
         String frame = wp.getReferenceFrame();
-        switch (frame) {
-            case "INERTIAL":
-                wp.setInertialX(Double.parseDouble(tfOrbit1.getText()));
-                wp.setInertialY(Double.parseDouble(tfOrbit2.getText()));
-                wp.setInertialZ(Double.parseDouble(tfOrbit3.getText()));
-                wp.setInertialVx(Double.parseDouble(tfOrbit4.getText()));
-                wp.setInertialVy(Double.parseDouble(tfOrbit5.getText()));
-                wp.setInertialVz(Double.parseDouble(tfOrbit6.getText()));
-                break;
-            case "ECEF":
-                wp.setEcefX(Double.parseDouble(tfOrbit1.getText()));
-                wp.setEcefY(Double.parseDouble(tfOrbit2.getText()));
-                wp.setEcefZ(Double.parseDouble(tfOrbit3.getText()));
-                wp.setEcefVx(Double.parseDouble(tfOrbit4.getText()));
-                wp.setEcefVy(Double.parseDouble(tfOrbit5.getText()));
-                wp.setEcefVz(Double.parseDouble(tfOrbit6.getText()));
-                break;
-            case "LLA":
-                wp.setLatitude(Double.parseDouble(tfOrbit1.getText()));
-                wp.setLongitude(Double.parseDouble(tfOrbit2.getText()));
-                wp.setAltitude(Double.parseDouble(tfOrbit3.getText()));
-                break;
-            default:
-                wp.setSemiMajorAxis(Double.parseDouble(tfOrbit1.getText()));
-                wp.setEccentricity(Double.parseDouble(tfOrbit2.getText()));
-                wp.setInclination(Double.parseDouble(tfOrbit3.getText()));
-                wp.setRaan(Double.parseDouble(tfOrbit4.getText()));
-                wp.setArgPeriapsis(Double.parseDouble(tfOrbit5.getText()));
-                wp.setTrueAnomaly(Double.parseDouble(tfOrbit6.getText()));
-                break;
-        }
-        timelineList.refresh();
+        ErrorHandler.runSafe(() -> {
+            switch (frame) {
+                case "INERTIAL":
+                    wp.setInertialX(Double.parseDouble(tfOrbit1.getText()));
+                    wp.setInertialY(Double.parseDouble(tfOrbit2.getText()));
+                    wp.setInertialZ(Double.parseDouble(tfOrbit3.getText()));
+                    wp.setInertialVx(Double.parseDouble(tfOrbit4.getText()));
+                    wp.setInertialVy(Double.parseDouble(tfOrbit5.getText()));
+                    wp.setInertialVz(Double.parseDouble(tfOrbit6.getText()));
+                    break;
+                case "ECEF":
+                    wp.setEcefX(Double.parseDouble(tfOrbit1.getText()));
+                    wp.setEcefY(Double.parseDouble(tfOrbit2.getText()));
+                    wp.setEcefZ(Double.parseDouble(tfOrbit3.getText()));
+                    wp.setEcefVx(Double.parseDouble(tfOrbit4.getText()));
+                    wp.setEcefVy(Double.parseDouble(tfOrbit5.getText()));
+                    wp.setEcefVz(Double.parseDouble(tfOrbit6.getText()));
+                    break;
+                case "LLA":
+                    wp.setLatitude(Double.parseDouble(tfOrbit1.getText()));
+                    wp.setLongitude(Double.parseDouble(tfOrbit2.getText()));
+                    wp.setAltitude(Double.parseDouble(tfOrbit3.getText()));
+                    break;
+                default:
+                    wp.setSemiMajorAxis(Double.parseDouble(tfOrbit1.getText()));
+                    wp.setEccentricity(Double.parseDouble(tfOrbit2.getText()));
+                    wp.setInclination(Double.parseDouble(tfOrbit3.getText()));
+                    wp.setRaan(Double.parseDouble(tfOrbit4.getText()));
+                    wp.setArgPeriapsis(Double.parseDouble(tfOrbit5.getText()));
+                    wp.setTrueAnomaly(Double.parseDouble(tfOrbit6.getText()));
+                    break;
+            }
+            timelineList.refresh();
+        }, "Save waypoint form");
     }
 
     private void saveCurrentEvent() {
@@ -496,12 +504,12 @@ public class MainController {
 
     @FXML
     private void onRunMission() {
-        try {
+        ErrorHandler.runSafe(() -> {
             saveCurrentEvent();
             MissionEvent selected = timelineList.getSelectionModel().getSelectedItem();
 
             if (selected == null) {
-                statusLabel.setText("Please select an event first");
+                ErrorHandler.warn("No event selected", null);
                 return;
             }
 
@@ -512,11 +520,7 @@ public class MainController {
             } else if (selected instanceof Coast) {
                 runCoast((Coast) selected);
             }
-
-        } catch (Exception ex) {
-            statusLabel.setText("Error: " + ex.getMessage());
-            ex.printStackTrace();
-        }
+        }, "Run mission");
     }
 
     private void runWaypoint(Waypoint wp) {
@@ -728,23 +732,22 @@ public class MainController {
                 statusLabel.setText("Processed event " + (i + 1) + "/" + events.size());
             }
 
-            // Translate Moon-relative segments to Earth-centered for rendering
+            // Translate all segments to inertial-body-centered coordinates
             for (int i = 0; i < segments.size(); i++) {
-                if (segmentBodies.get(i) != CelestialBody.EARTH) {
-                    segments.set(i, physicsService.translateToEarthCentered(segments.get(i), segmentBodies.get(i)));
+                if (segmentBodies.get(i) != inertialBody) {
+                    segments.set(i, physicsService.translateToBodyCentered(
+                        segments.get(i), segmentBodies.get(i), inertialBody));
                 }
             }
 
             viewer3D.setTrajectoryGroups(segments, segmentColors);
             viewer2D.setTrajectoryGroups(segments, segmentColors);
 
-            try {
-                viewer3D.setMoonPosition(physicsService.getMoonPosition(epoch));
-            } catch (Exception e) {
-                // ephemeris unavailable, Moon not shown
-            }
+            ErrorHandler.runSafeSilent(() ->
+                viewer3D.setMoonPosition(physicsService.getMoonPosition(epoch))
+            );
 
-            // Compute body trails for non-inertial celestial bodies
+            // Compute body trails for all bodies except the inertial body
             double totalDuration = 0;
             for (List<TrajectoryPoint> seg : segments) {
                 if (seg.size() >= 2) {
@@ -758,6 +761,8 @@ public class MainController {
             for (CelestialBody body : CelestialBody.values()) {
                 if (body != inertialBody) {
                     List<TrajectoryPoint> trail = physicsService.getCelestialBodyTrajectory(body, epoch, totalDuration, 360);
+                    // Translate trail to inertial body centered
+                    trail = physicsService.translateToBodyCentered(trail, body, inertialBody);
                     viewer3D.setBodyTrail(body, trail);
                 } else {
                     viewer3D.setBodyTrail(body, null);
@@ -766,11 +771,11 @@ public class MainController {
 
             int totalPoints = 0;
             for (List<TrajectoryPoint> seg : segments) totalPoints += seg.size();
+            missionHasRun = true;
             statusLabel.setText("Mission complete - " + totalPoints + " points");
 
         } catch (Exception ex) {
-            statusLabel.setText("Error: " + ex.getMessage());
-            ex.printStackTrace();
+            ErrorHandler.error("Run all events failed", ex);
         }
     }
 }

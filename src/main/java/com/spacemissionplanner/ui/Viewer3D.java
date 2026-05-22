@@ -3,6 +3,7 @@ package com.spacemissionplanner.ui;
 import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.physics.OrekitService;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
+import com.spacemissionplanner.util.ErrorHandler;
 import javafx.animation.AnimationTimer;
 import javafx.geometry.Point3D;
 import javafx.scene.AmbientLight;
@@ -148,6 +149,7 @@ public class Viewer3D extends VBox {
         createMoon();
         createSpacecraft();
         createOrbitPath();
+        createBodyTrails();
 
         AmbientLight ambientLight = new AmbientLight(Color.rgb(60, 60, 80));
         sceneRoot.getChildren().add(ambientLight);
@@ -633,11 +635,9 @@ public class Viewer3D extends VBox {
 
                         TrajectoryPoint p = trajectory.get(currentIndex);
                         if (orekitService != null && p.date != null) {
-                            try {
-                                setMoonPosition(orekitService.getMoonPosition(p.date));
-                            } catch (Exception e) {
-                                // fallback: keep current moon position
-                            }
+                            ErrorHandler.runSafeSilent(() ->
+                                setMoonPosition(orekitService.getMoonPosition(p.date))
+                            );
                         }
                     }
                 }
@@ -676,9 +676,9 @@ public class Viewer3D extends VBox {
                 updateSpacecraftPosition();
                 TrajectoryPoint p = trajectory.get(currentIndex);
                 if (orekitService != null && p.date != null) {
-                    try {
-                        setMoonPosition(orekitService.getMoonPosition(p.date));
-                    } catch (Exception ex) {}
+                    ErrorHandler.runSafeSilent(() ->
+                        setMoonPosition(orekitService.getMoonPosition(p.date))
+                    );
                 }
             }
         });

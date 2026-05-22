@@ -1,6 +1,7 @@
 package com.spacemissionplanner.physics;
 
 import com.spacemissionplanner.model.CelestialBody;
+import com.spacemissionplanner.util.ErrorHandler;
 import org.hipparchus.geometry.euclidean.threed.Vector3D;
 import org.orekit.bodies.CelestialBodyFactory;
 import org.orekit.orbits.CartesianOrbit;
@@ -39,13 +40,15 @@ public class OrekitService {
     }
 
     private void configureDataLoading() {
-        try {
-            java.io.File orekitData = new java.io.File("orekit-data");
-            if (orekitData.exists() && orekitData.isDirectory()) {
-                DataContext.getDefault().getDataProvidersManager().addProvider(new DirectoryCrawler(orekitData));
-            }
-        } catch (Exception e) {
-            // OreKit data directory not available; ephemeris will fall back to analytic
+        java.io.File orekitData = new java.io.File("orekit-data");
+        if (orekitData.exists() && orekitData.isDirectory()) {
+            ErrorHandler.runSafe(() ->
+                DataContext.getDefault().getDataProvidersManager().addProvider(
+                    new DirectoryCrawler(orekitData)),
+                "Load OreKit ephemeris data"
+            );
+        } else {
+            ErrorHandler.info("orekit-data directory not found — using analytic ephemeris");
         }
     }
 
@@ -289,6 +292,14 @@ public class OrekitService {
     }
 
     public List<TrajectoryPoint> propagateWithCoast(TrajectoryPoint start, double durationSeconds, int steps) {
+        return propagateArc(start, durationSeconds, steps);
+    }
+
+    public List<TrajectoryPoint> propagateBackward(TrajectoryPoint start, double durationSeconds, int steps) {
+        return propagateArc(start, -durationSeconds, steps);
+    }
+
+    public List<TrajectoryPoint> propagateArc(TrajectoryPoint start, double durationSeconds, int steps) {
         List<TrajectoryPoint> points = new ArrayList<>();
         Orbit startOrbit = new CartesianOrbit(
             new PVCoordinates(
@@ -312,26 +323,82 @@ public class OrekitService {
         return points;
     }
 
+    public TrajectoryPoint propagateToDate(TrajectoryPoint start, AbsoluteDate targetDate) {
+        Orbit startOrbit = new CartesianOrbit(
+            new PVCoordinates(
+                new Vector3D(start.x, start.y, start.z),
+                new Vector3D(start.vx, start.vy, start.vz)
+            ),
+            inertialFrame, start.date, getEffectiveGm()
+        );
+        Propagator propagator = createPropagator(startOrbit);
+        SpacecraftState state = propagator.propagate(targetDate);
+        PVCoordinates pv = state.getPVCoordinates();
+        return new TrajectoryPoint(
+            targetDate,
+            pv.getPosition().getX(), pv.getPosition().getY(), pv.getPosition().getZ(),
+            pv.getVelocity().getX(), pv.getVelocity().getY(), pv.getVelocity().getZ()
+        );
+    }
+
+    public static class MeetResult {
+        public final TrajectoryPoint forwardEnd;
+        public final TrajectoryPoint backwardEnd;
+        public final double positionError;
+        public final double velocityError;
+        public final double totalError;
+
+        public MeetResult(TrajectoryPoint forwardEnd, TrajectoryPoint backwardEnd) {
+            this.forwardEnd = forwardEnd;
+            this.backwardEnd = backwardEnd;
+            double dx = forwardEnd.x - backwardEnd.x;
+            double dy = forwardEnd.y - backwardEnd.y;
+            double dz = forwardEnd.z - backwardEnd.z;
+            this.positionError = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            double dvx = forwardEnd.vx - backwardEnd.vx;
+            double dvy = forwardEnd.vy - backwardEnd.vy;
+            double dvz = forwardEnd.vz - backwardEnd.vz;
+            this.velocityError = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+            this.totalError = positionError + velocityError * 1000;
+        }
+    }
+
+    public MeetResult computeMeetError(TrajectoryPoint pointA, TrajectoryPoint pointB) {
+        return new MeetResult(pointA, pointB);
+    }
+
+    public MeetResult propagateToMeet(TrajectoryPoint forwardPoint, AbsoluteDate forwardTargetDate,
+                                       TrajectoryPoint backwardPoint, AbsoluteDate backwardTargetDate) {
+        TrajectoryPoint forwardEnd = propagateToDate(forwardPoint, forwardTargetDate);
+        TrajectoryPoint backwardEnd = propagateToDate(backwardPoint, backwardTargetDate);
+        return new MeetResult(forwardEnd, backwardEnd);
+    }
+
     public Vector3D getMoonPosition(AbsoluteDate date) {
         AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
         try {
             org.orekit.bodies.CelestialBody moon = CelestialBodyFactory.getMoon();
             return moon.getPVCoordinates(d, inertialFrame).getPosition();
         } catch (Exception e) {
-            double a = 384400000;
-            double period = 27.321661 * 86400;
-            double n = 2 * Math.PI / period;
-            double m0 = Math.toRadians(135.0);
-            double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
-            double i = Math.toRadians(23.44);
-            double cosM = Math.cos(m);
-            double sinM = Math.sin(m);
-            return new Vector3D(
-                a * cosM,
-                a * sinM * Math.cos(i),
-                a * sinM * Math.sin(i)
-            );
+            ErrorHandler.warn("DE ephemeris unavailable for Moon position, using analytic fallback", e);
+            return computeAnalyticMoonPosition(d);
         }
+    }
+
+    private Vector3D computeAnalyticMoonPosition(AbsoluteDate d) {
+        double a = 384400000;
+        double period = 27.321661 * 86400;
+        double n = 2 * Math.PI / period;
+        double m0 = Math.toRadians(135.0);
+        double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
+        double i = Math.toRadians(23.44);
+        double cosM = Math.cos(m);
+        double sinM = Math.sin(m);
+        return new Vector3D(
+            a * cosM,
+            a * sinM * Math.cos(i),
+            a * sinM * Math.sin(i)
+        );
     }
 
     public void getMoonPV(AbsoluteDate date, Vector3D[] outPos, Vector3D[] outVel) {
@@ -342,35 +409,42 @@ public class OrekitService {
             outPos[0] = pv.getPosition();
             outVel[0] = pv.getVelocity();
         } catch (Exception e) {
-            double a = 384400000;
-            double period = 27.321661 * 86400;
-            double n = 2 * Math.PI / period;
-            double m0 = Math.toRadians(135.0);
-            double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
-            double i = Math.toRadians(23.44);
-            double cosM = Math.cos(m);
-            double sinM = Math.sin(m);
-            outPos[0] = new Vector3D(a * cosM, a * sinM * Math.cos(i), a * sinM * Math.sin(i));
-            outVel[0] = new Vector3D(
-                -a * n * sinM,
-                a * n * cosM * Math.cos(i),
-                a * n * cosM * Math.sin(i)
-            );
+            ErrorHandler.warn("DE ephemeris unavailable for Moon PV, using analytic fallback", e);
+            outPos[0] = computeAnalyticMoonPosition(d);
+            outVel[0] = new Vector3D(0, 0, 0);
         }
     }
 
-    public List<TrajectoryPoint> translateToEarthCentered(List<TrajectoryPoint> points, CelestialBody relativeBody) {
-        if (relativeBody == CelestialBody.EARTH || points == null) return points;
+    public List<TrajectoryPoint> translateToBodyCentered(List<TrajectoryPoint> points,
+                                                          CelestialBody relativeBody,
+                                                          CelestialBody targetBody) {
+        if (relativeBody == targetBody || points == null) return points;
         List<TrajectoryPoint> result = new ArrayList<>();
-        Vector3D[] moonPosArr = new Vector3D[1];
-        Vector3D[] moonVelArr = new Vector3D[1];
+        Vector3D[] relPosArr = new Vector3D[1];
+        Vector3D[] relVelArr = new Vector3D[1];
+        Vector3D[] tgtPosArr = new Vector3D[1];
+        Vector3D[] tgtVelArr = new Vector3D[1];
         for (TrajectoryPoint p : points) {
-            getMoonPV(p.date, moonPosArr, moonVelArr);
+            getBodyPV(relativeBody, p.date, relPosArr, relVelArr);
+            getBodyPV(targetBody, p.date, tgtPosArr, tgtVelArr);
             result.add(new TrajectoryPoint(p.date,
-                p.x + moonPosArr[0].getX(), p.y + moonPosArr[0].getY(), p.z + moonPosArr[0].getZ(),
-                p.vx + moonVelArr[0].getX(), p.vy + moonVelArr[0].getY(), p.vz + moonVelArr[0].getZ()));
+                p.x + relPosArr[0].getX() - tgtPosArr[0].getX(),
+                p.y + relPosArr[0].getY() - tgtPosArr[0].getY(),
+                p.z + relPosArr[0].getZ() - tgtPosArr[0].getZ(),
+                p.vx + relVelArr[0].getX() - tgtVelArr[0].getX(),
+                p.vy + relVelArr[0].getY() - tgtVelArr[0].getY(),
+                p.vz + relVelArr[0].getZ() - tgtVelArr[0].getZ()));
         }
         return result;
+    }
+
+    private void getBodyPV(CelestialBody body, AbsoluteDate date, Vector3D[] outPos, Vector3D[] outVel) {
+        if (body == CelestialBody.EARTH) {
+            outPos[0] = Vector3D.ZERO;
+            outVel[0] = Vector3D.ZERO;
+        } else {
+            getMoonPV(date, outPos, outVel);
+        }
     }
 
     public List<TrajectoryPoint> getCelestialBodyTrajectory(CelestialBody body, AbsoluteDate start, double durationSeconds, int steps) {

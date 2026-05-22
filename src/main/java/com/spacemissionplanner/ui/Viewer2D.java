@@ -2,6 +2,7 @@ package com.spacemissionplanner.ui;
 
 import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
+import com.spacemissionplanner.util.ErrorHandler;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
@@ -172,6 +173,7 @@ public class Viewer2D extends VBox {
                 case 11: return geo.getAltitude() / 1000;
             }
         } catch (Exception e) {
+            ErrorHandler.warn("Geodetic computation failed", e);
             return Double.NaN;
         }
         return Double.NaN;
@@ -196,6 +198,7 @@ public class Viewer2D extends VBox {
                 case 17: return Math.toDegrees(kep.getTrueAnomaly());
             }
         } catch (Exception e) {
+            ErrorHandler.warn("Keplerian element computation failed", e);
             return Double.NaN;
         }
         return Double.NaN;
