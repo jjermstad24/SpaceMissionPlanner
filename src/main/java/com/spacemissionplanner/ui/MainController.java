@@ -4,23 +4,18 @@ import com.spacemissionplanner.model.CelestialBody;
 import com.spacemissionplanner.model.Coast;
 import com.spacemissionplanner.model.Maneuver;
 import com.spacemissionplanner.model.MissionEvent;
-import com.spacemissionplanner.model.Waypoint;
+import com.spacemissionplanner.model.Vehicle;
 import com.spacemissionplanner.physics.OrekitService;
 import com.spacemissionplanner.physics.OrekitService.TrajectoryPoint;
 import com.spacemissionplanner.util.ErrorHandler;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.ColorPicker;
-import javafx.scene.control.Label;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.TabPane;
-import javafx.scene.control.TextField;
-import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.Stage;
+import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
@@ -28,8 +23,11 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Polygon;
 import javafx.scene.shape.Rectangle;
 import javafx.util.Callback;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 
 import org.orekit.orbits.Orbit;
@@ -41,8 +39,8 @@ import java.util.ArrayList;
 
 public class MainController {
 
-    @FXML private ComboBox<String> cbWaypointFrame;
-    @FXML private ComboBox<String> cbWaypointBody;
+    @FXML private ComboBox<String> cbVehicleFrame;
+    @FXML private ComboBox<String> cbVehicleBody;
     @FXML private Label lblOrbit1;
     @FXML private Label lblOrbit2;
     @FXML private Label lblOrbit3;
@@ -99,31 +97,136 @@ public class MainController {
         ErrorHandler.setStatusConsumer(msg -> statusLabel.setText(msg));
         events = FXCollections.observableArrayList();
 
-        Waypoint defaultWaypoint = new Waypoint("Waypoint 1", 6871, 0.0, 45.0, 0.0, 0.0, 0.0);
-        defaultWaypoint.setColorHex(COLOR_PALETTE[0]);
-        events.add(defaultWaypoint);
+        Vehicle defaultVehicle = new Vehicle("Vehicle 1", 6871, 0.0, 45.0, 0.0, 0.0, 0.0);
+        defaultVehicle.setColorHex(COLOR_PALETTE[0]);
+        events.add(defaultVehicle);
 
         timelineList.setItems(events);
         timelineList.setCellFactory(new Callback<ListView<MissionEvent>, ListCell<MissionEvent>>() {
             @Override
             public ListCell<MissionEvent> call(ListView<MissionEvent> param) {
                 return new ListCell<MissionEvent>() {
-                    private final Rectangle colorRect = new Rectangle(12, 12);
+                    private static final double RAIL_W = 26;
+                    private static final double CELL_H = 36;
+                    private static final double LINE_W = 2;
+                    private final Rectangle line = new Rectangle(LINE_W, CELL_H, Color.rgb(160, 160, 160));
+
+                    private boolean isChildOfVehicle(int idx, ObservableList<MissionEvent> items) {
+                        if (idx <= 0) return false;
+                        for (int i = idx - 1; i >= 0; i--) {
+                            MissionEvent prev = items.get(i);
+                            if (prev instanceof Vehicle) return true;
+                            if (prev instanceof Coast || prev instanceof Maneuver) continue;
+                            return false;
+                        }
+                        return false;
+                    }
 
                     @Override
                     protected void updateItem(MissionEvent item, boolean empty) {
                         super.updateItem(item, empty);
                         if (empty || item == null) {
-                            setText(null);
                             setGraphic(null);
+                            setText(null);
+                            setStyle(null);
+                            return;
+                        }
+
+                        int idx = getIndex();
+                        ObservableList<MissionEvent> items = getListView().getItems();
+                        boolean isChild = !(item instanceof Vehicle)
+                            && idx >= 0 && idx < items.size()
+                            && isChildOfVehicle(idx, items);
+
+                        setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+
+                        Color c = ErrorHandler.parseSafe(
+                            () -> Color.web(item.getColorHex()), Color.CYAN, "Parse event color");
+
+                        if (item instanceof Vehicle) {
+                            Circle circle = new Circle(5, c);
+                            circle.setStroke(Color.BLACK);
+                            circle.setStrokeWidth(1.5);
+                            StackPane rail = new StackPane(line, circle);
+                            rail.setPrefWidth(RAIL_W);
+                            rail.setMinWidth(RAIL_W);
+                            rail.setMaxWidth(RAIL_W);
+
+                            Label nameLabel = new Label(item.toString());
+                            nameLabel.setStyle("-fx-font-size: 11; -fx-font-weight: bold;");
+
+                            Label typeLabel = new Label("WAYPOINT");
+                            typeLabel.setStyle("-fx-font-size: 9; -fx-text-fill: #888;");
+
+                            VBox textBox = new VBox(-2, typeLabel, nameLabel);
+                            textBox.setAlignment(Pos.CENTER_LEFT);
+
+                            HBox cell = new HBox(4, rail, textBox);
+                            cell.setAlignment(Pos.CENTER_LEFT);
+                            setGraphic(cell);
+
                         } else {
-                            String prefix = item instanceof Waypoint ? "[W] "
-                                : item instanceof Maneuver ? "[M] "
-                                : item instanceof Coast ? "[C] " : "";
-                            colorRect.setFill(ErrorHandler.parseSafe(
-                                () -> Color.web(item.getColorHex()), Color.CYAN, "Parse event color"));
-                            setGraphic(colorRect);
-                            setText(prefix + item.toString());
+                            Node marker;
+                            String typeText;
+                            if (item instanceof Maneuver) {
+                                Polygon triangle = new Polygon(2.0, -4.0, 2.0, 4.0, 8.0, 0.0);
+                                triangle.setFill(c);
+                                triangle.setStroke(Color.BLACK);
+                                triangle.setStrokeWidth(1);
+                                marker = triangle;
+                                typeText = "MANEUVER";
+                            } else {
+                                Rectangle bar = new Rectangle(10, 3, c);
+                                bar.setArcWidth(2);
+                                bar.setArcHeight(2);
+                                marker = bar;
+                                typeText = "COAST";
+                            }
+
+                            if (isChild) {
+                                Rectangle connector = new Rectangle(10, 2, Color.rgb(160, 160, 160));
+                                HBox markerBox = new HBox(2, connector, marker);
+                                markerBox.setAlignment(Pos.CENTER_LEFT);
+
+                                StackPane rail = new StackPane(line, markerBox);
+                                rail.setPrefWidth(RAIL_W + 10);
+                                rail.setMinWidth(RAIL_W + 10);
+                                rail.setMaxWidth(RAIL_W + 10);
+                                StackPane.setAlignment(markerBox, Pos.CENTER_LEFT);
+
+                                Label nameLabel = new Label(item.toString());
+                                nameLabel.setStyle("-fx-font-size: 11;");
+
+                                Label typeLabel = new Label(typeText);
+                                typeLabel.setStyle("-fx-font-size: 9; -fx-text-fill: #888;");
+
+                                VBox textBox = new VBox(-2, typeLabel, nameLabel);
+                                textBox.setAlignment(Pos.CENTER_LEFT);
+                                textBox.setPadding(new Insets(0, 0, 0, 8));
+
+                                HBox cell = new HBox(4, rail, textBox);
+                                cell.setAlignment(Pos.CENTER_LEFT);
+                                setGraphic(cell);
+
+                            } else {
+                                StackPane rail = new StackPane(line, marker);
+                                rail.setPrefWidth(RAIL_W);
+                                rail.setMinWidth(RAIL_W);
+                                rail.setMaxWidth(RAIL_W);
+
+                                Label nameLabel = new Label(item.toString());
+                                nameLabel.setStyle("-fx-font-size: 11;");
+
+                                Label typeLabel = new Label(typeText);
+                                typeLabel.setStyle("-fx-font-size: 9; -fx-text-fill: #888;");
+
+                                VBox textBox = new VBox(-2, typeLabel, nameLabel);
+                                textBox.setAlignment(Pos.CENTER_LEFT);
+
+                                HBox cell = new HBox(4, rail, textBox);
+                                cell.setAlignment(Pos.CENTER_LEFT);
+                                setGraphic(cell);
+                            }
                         }
                     }
                 };
@@ -133,8 +236,8 @@ public class MainController {
         timelineList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             ErrorHandler.runSafe(() -> {
                 if (oldVal != null) {
-                    if (oldVal instanceof Waypoint) {
-                        saveCurrentWaypointForm((Waypoint) oldVal);
+                    if (oldVal instanceof Vehicle) {
+                        saveCurrentVehicleForm((Vehicle) oldVal);
                     } else if (oldVal instanceof Maneuver) {
                         updateManeuverFromForm((Maneuver) oldVal);
                     } else if (oldVal instanceof Coast) {
@@ -147,7 +250,7 @@ public class MainController {
             }, "Save/load event form");
         });
 
-        timelineList.setFixedCellSize(30);
+        timelineList.setFixedCellSize(36);
         timelineList.setOnDragDetected(event -> {
             MissionEvent selected = timelineList.getSelectionModel().getSelectedItem();
             if (selected != null) {
@@ -169,7 +272,8 @@ public class MainController {
             boolean success = false;
             if (db.hasString()) {
                 int fromIdx = Integer.parseInt(db.getString());
-                int toIdx = (int)(event.getY() / timelineList.getFixedCellSize() + 0.5);
+                double cellSize = timelineList.getFixedCellSize();
+                int toIdx = (int)(event.getY() / cellSize + 0.5);
                 toIdx = Math.max(0, Math.min(events.size() - 1, toIdx));
                 if (fromIdx != toIdx) {
                     MissionEvent item = events.remove(fromIdx);
@@ -188,21 +292,20 @@ public class MainController {
             MissionEvent selected = timelineList.getSelectionModel().getSelectedItem();
             if (selected != null) {
                 Color c = eventColorPicker.getValue();
-                selected.setColorHex(String.format("#%02X%02X%02X",
-                    (int)(c.getRed() * 255), (int)(c.getGreen() * 255), (int)(c.getBlue() * 255)));
+                selected.setColorHex(toHex(c));
                 timelineList.refresh();
             }
         });
 
-        cbWaypointFrame.getItems().addAll("Orbital Elements", "Inertial (EME2000)", "ECEF (ITRF)", "Geodetic (LLA)");
-        cbWaypointFrame.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+        cbVehicleFrame.getItems().addAll("Orbital Elements", "Inertial (EME2000)", "ECEF (ITRF)", "Geodetic (LLA)");
+        cbVehicleFrame.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 updateOrbitLabels(newVal);
             }
         });
 
-        cbWaypointBody.getItems().addAll("Earth", "Moon");
-        cbWaypointBody.getSelectionModel().select(0);
+        cbVehicleBody.getItems().addAll("Earth", "Moon");
+        cbVehicleBody.getSelectionModel().select(0);
 
         cbEpochFormat.getItems().addAll("UTC", "Julian Date", "MJD");
         cbEpochFormat.getSelectionModel().select(0);
@@ -281,14 +384,16 @@ public class MainController {
             if (body == CelestialBody.EARTH) {
                 inertialRb.setSelected(true);
                 inertialBody = CelestialBody.EARTH;
+                viewer3D.setCoordOrigin(CelestialBody.EARTH);
             }
             int bodyIdx = body.ordinal();
             inertialRb.selectedProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal) {
                     inertialBody = CelestialBody.values()[bodyIdx];
+                    viewer3D.setCoordOrigin(inertialBody);
                     statusLabel.setText("Coordinate origin: " + inertialBody.getDisplayName());
                     if (missionHasRun) {
-                        onRunAllWaypoints();
+                        onRunAllVehicles();
                     }
                 }
             });
@@ -316,7 +421,7 @@ public class MainController {
         }, AbsoluteDate.J2000_EPOCH, "Parse epoch");
     }
 
-    private void saveCurrentWaypointForm(Waypoint wp) {
+    private void saveCurrentVehicleForm(Vehicle wp) {
         String frame = wp.getReferenceFrame();
         ErrorHandler.runSafe(() -> {
             switch (frame) {
@@ -351,14 +456,14 @@ public class MainController {
                     break;
             }
             timelineList.refresh();
-        }, "Save waypoint form");
+        }, "Save vehicle form");
     }
 
     private void saveCurrentEvent() {
         MissionEvent selected = timelineList.getSelectionModel().getSelectedItem();
         if (selected == null) return;
-        if (selected instanceof Waypoint) {
-            updateWaypointFromForm((Waypoint) selected);
+        if (selected instanceof Vehicle) {
+            updateVehicleFromForm((Vehicle) selected);
         } else if (selected instanceof Maneuver) {
             updateManeuverFromForm((Maneuver) selected);
         } else if (selected instanceof Coast) {
@@ -368,8 +473,8 @@ public class MainController {
 
     private void onEventSelected(MissionEvent event) {
         eventColorPicker.setValue(Color.web(event.getColorHex()));
-        if (event instanceof Waypoint) {
-            showOrbitInput((Waypoint) event);
+        if (event instanceof Vehicle) {
+            showOrbitInput((Vehicle) event);
         } else if (event instanceof Maneuver) {
             showManeuverInput((Maneuver) event);
         } else if (event instanceof Coast) {
@@ -410,7 +515,7 @@ public class MainController {
         }
     }
 
-    private void showOrbitInput(Waypoint wp) {
+    private void showOrbitInput(Vehicle wp) {
         inputPanelTitle.setText("ORBIT INPUT (" + wp.getName() + ")");
         orbitInputPanel.setVisible(true);
         orbitInputPanel.setManaged(true);
@@ -424,10 +529,10 @@ public class MainController {
         if (frame.equals("INERTIAL")) comboVal = "Inertial (EME2000)";
         else if (frame.equals("ECEF")) comboVal = "ECEF (ITRF)";
         else if (frame.equals("LLA")) comboVal = "Geodetic (LLA)";
-        cbWaypointFrame.getSelectionModel().select(comboVal);
+        cbVehicleFrame.getSelectionModel().select(comboVal);
         updateOrbitLabels(comboVal);
 
-        cbWaypointBody.getSelectionModel().select(wp.getCelestialBody() == CelestialBody.MOON ? "Moon" : "Earth");
+        cbVehicleBody.getSelectionModel().select(wp.getCelestialBody() == CelestialBody.MOON ? "Moon" : "Earth");
 
         switch (frame) {
             case "INERTIAL":
@@ -513,8 +618,8 @@ public class MainController {
                 return;
             }
 
-            if (selected instanceof Waypoint) {
-                runWaypoint((Waypoint) selected);
+            if (selected instanceof Vehicle) {
+                runVehicle((Vehicle) selected);
             } else if (selected instanceof Maneuver) {
                 runManeuver((Maneuver) selected);
             } else if (selected instanceof Coast) {
@@ -523,9 +628,9 @@ public class MainController {
         }, "Run mission");
     }
 
-    private void runWaypoint(Waypoint wp) {
-        updateWaypointFromForm(wp);
-        statusLabel.setText("Waypoint set: " + wp.toString());
+    private void runVehicle(Vehicle wp) {
+        updateVehicleFromForm(wp);
+        statusLabel.setText("Vehicle set: " + wp.toString());
     }
 
     private void runManeuver(Maneuver m) {
@@ -539,8 +644,8 @@ public class MainController {
         statusLabel.setText("Coast duration: " + String.format("%.0f", c.getDuration()) + " s, step: " + String.format("%.0f", c.getStepSize()) + " s");
     }
 
-    private String selectedWaypointFrame() {
-        String sel = cbWaypointFrame.getSelectionModel().getSelectedItem();
+    private String selectedVehicleFrame() {
+        String sel = cbVehicleFrame.getSelectionModel().getSelectedItem();
         if (sel == null) return "ORBITAL_ELEMENTS";
         if (sel.startsWith("Inertial")) return "INERTIAL";
         if (sel.startsWith("ECEF")) return "ECEF";
@@ -548,10 +653,10 @@ public class MainController {
         return "ORBITAL_ELEMENTS";
     }
 
-    private void updateWaypointFromForm(Waypoint wp) {
-        String frame = selectedWaypointFrame();
+    private void updateVehicleFromForm(Vehicle wp) {
+        String frame = selectedVehicleFrame();
         wp.setReferenceFrame(frame);
-        String bodySel = cbWaypointBody.getSelectionModel().getSelectedItem();
+        String bodySel = cbVehicleBody.getSelectionModel().getSelectedItem();
         wp.setCelestialBody("Moon".equals(bodySel) ? CelestialBody.MOON : CelestialBody.EARTH);
         switch (frame) {
             case "INERTIAL":
@@ -612,12 +717,12 @@ public class MainController {
     }
 
     @FXML
-    private void onAddWaypoint() {
+    private void onAddVehicle() {
         int num = 1;
         for (MissionEvent e : events) {
-            if (e instanceof Waypoint) num++;
+            if (e instanceof Vehicle) num++;
         }
-        Waypoint newWp = new Waypoint("Waypoint " + num);
+        Vehicle newWp = new Vehicle("Vehicle " + num);
         assignEventColor(newWp);
         events.add(newWp);
         timelineList.getSelectionModel().select(newWp);
@@ -641,14 +746,21 @@ public class MainController {
         for (MissionEvent e : events) {
             if (e instanceof Coast) num++;
         }
-        Coast newC = new Coast("Coast " + num);
-        assignEventColor(newC);
-        events.add(newC);
-        timelineList.getSelectionModel().select(newC);
+        Coast c = new Coast("Coast " + num, 3600, 60);
+        assignEventColor(c);
+        events.add(c);
+        timelineList.getSelectionModel().select(c);
+    }
+
+    private static String toHex(Color c) {
+        int r = (int)(c.getRed() * 255);
+        int g = (int)(c.getGreen() * 255);
+        int b = (int)(c.getBlue() * 255);
+        return "#" + Integer.toHexString((r << 16) | (g << 8) | b);
     }
 
     @FXML
-    private void onRemoveWaypoint() {
+    private void onRemoveVehicle() {
         MissionEvent selected = timelineList.getSelectionModel().getSelectedItem();
         if (selected != null && events.size() > 1) {
             int index = timelineList.getSelectionModel().getSelectedIndex();
@@ -664,7 +776,341 @@ public class MainController {
     }
 
     @FXML
-    private void onRunAllWaypoints() {
+    private void onOptimizeMeet() {
+        List<Vehicle> vehicles = new ArrayList<>();
+        for (MissionEvent evt : events) {
+            if (evt instanceof Vehicle) vehicles.add((Vehicle) evt);
+        }
+        if (vehicles.size() < 2) {
+            ErrorHandler.info("Need at least 2 vehicles for optimization");
+            return;
+        }
+
+        Stage dialog = new Stage();
+        dialog.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        dialog.setTitle("Optimize Transfer");
+
+        VBox root = new VBox(10);
+        root.setStyle("-fx-padding: 15");
+
+        Label lblStart = new Label("Start Vehicle:");
+        ComboBox<Vehicle> cbStart = new ComboBox<>();
+        cbStart.setItems(FXCollections.observableArrayList(vehicles));
+        cbStart.getSelectionModel().selectFirst();
+        cbStart.setCellFactory(lv -> new ListCell<Vehicle>() {
+            @Override protected void updateItem(Vehicle item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? "" : "Vehicle " + (vehicles.indexOf(item) + 1));
+            }
+        });
+        cbStart.setButtonCell(new ListCell<Vehicle>() {
+            @Override protected void updateItem(Vehicle item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? "" : "Vehicle " + (vehicles.indexOf(item) + 1));
+            }
+        });
+
+        Label lblEnd = new Label("End Vehicle (target orbit):");
+        ComboBox<Vehicle> cbEnd = new ComboBox<>();
+        cbEnd.setItems(FXCollections.observableArrayList(vehicles));
+        cbEnd.getSelectionModel().select(Math.min(1, vehicles.size() - 1));
+        cbEnd.setCellFactory(lv -> new ListCell<Vehicle>() {
+            @Override protected void updateItem(Vehicle item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? "" : "Vehicle " + (vehicles.indexOf(item) + 1));
+            }
+        });
+        cbEnd.setButtonCell(new ListCell<Vehicle>() {
+            @Override protected void updateItem(Vehicle item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? "" : "Vehicle " + (vehicles.indexOf(item) + 1));
+            }
+        });
+
+        String[] paramNames = {"SMA (km)", "Eccentricity", "Inclination", "RAAN", "Arg Perigee", "True Anomaly"};
+        CheckBox[] paramChecks = new CheckBox[6];
+        TextField[][] paramMin = new TextField[6][];
+        TextField[][] paramMax = new TextField[6][];
+        double[][] defaultRanges = {
+            {6800, 7200}, {0.001, 0.05}, {0.3, 1.0}, {0, 6.28}, {0, 6.28}, {0, 6.28}
+        };
+        for (int i = 0; i < 6; i++) {
+            paramMin[i] = new TextField[1];
+            paramMax[i] = new TextField[1];
+        }
+
+        TitledPane paramsPane = new TitledPane();
+        paramsPane.setText("Parameters to Vary");
+        GridPane paramsGrid = new GridPane();
+        paramsGrid.setHgap(5);
+        paramsGrid.setVgap(3);
+        for (int i = 0; i < 6; i++) {
+            paramChecks[i] = new CheckBox(paramNames[i]);
+            paramMin[i][0] = new TextField(String.valueOf(defaultRanges[i][0]));
+            paramMin[i][0].setPrefWidth(80);
+            paramMax[i][0] = new TextField(String.valueOf(defaultRanges[i][1]));
+            paramMax[i][0].setPrefWidth(80);
+            paramsGrid.add(paramChecks[i], 0, i);
+            paramsGrid.add(new Label("Min:"), 1, i);
+            paramsGrid.add(paramMin[i][0], 2, i);
+            paramsGrid.add(new Label("Max:"), 3, i);
+            paramsGrid.add(paramMax[i][0], 4, i);
+        }
+        paramsPane.setContent(paramsGrid);
+        paramsPane.setExpanded(true);
+
+        HBox coastRow = new HBox(5);
+        coastRow.getChildren().addAll(
+            new Label("Coast duration (s):"),
+            new TextField("3600") {{ setPrefWidth(100); }}
+        );
+        TextField tfCoast = (TextField) coastRow.getChildren().get(1);
+
+        HBox stepsRow = new HBox(5);
+        stepsRow.getChildren().addAll(
+            new Label("Steps per param:"),
+            new TextField("10") {{ setPrefWidth(60); }}
+        );
+        TextField tfSteps = (TextField) stepsRow.getChildren().get(1);
+
+        TextArea taResults = new TextArea();
+        taResults.setPrefHeight(150);
+        taResults.setEditable(false);
+
+        HBox btnRow = new HBox(10);
+        Button btnRun = new Button("Run Optimization");
+        Button btnApply = new Button("Apply Best Result");
+        btnApply.setDisable(true);
+        Button btnClose = new Button("Close");
+        btnRow.getChildren().addAll(btnRun, btnApply, btnClose);
+
+        root.getChildren().addAll(lblStart, cbStart, lblEnd, cbEnd, paramsPane, coastRow, stepsRow, taResults, btnRow);
+
+        Scene scene = new Scene(root, 520, 600);
+        dialog.setScene(scene);
+        dialog.show();
+
+        final OrekitService.TransferOptimizerResult[] bestHolder = new OrekitService.TransferOptimizerResult[1];
+
+        btnRun.setOnAction(e -> {
+            ErrorHandler.runSafe(() -> {
+                Vehicle start = cbStart.getValue();
+                Vehicle end = cbEnd.getValue();
+                if (start == null || end == null) return;
+                if (start == end) { taResults.setText("Start and end must be different vehicles"); return; }
+
+                double coastDuration = ErrorHandler.parseSafe(() -> Double.parseDouble(tfCoast.getText()), 3600.0, "parse coast duration");
+                int stepsPerParam = (int) (double) ErrorHandler.parseSafe(() -> Double.parseDouble(tfSteps.getText()), 10.0, "parse steps per param");
+
+                AbsoluteDate epoch = parseEpoch();
+                TrajectoryPoint startPoint = physicsService.createTrajectoryPoint(
+                    start.getSemiMajorAxis() * 1000, start.getEccentricity(), start.getInclination(),
+                    start.getRaan(), start.getArgPeriapsis(), start.getTrueAnomaly(), epoch);
+
+                TrajectoryPoint endPoint = physicsService.createTrajectoryPoint(
+                    end.getSemiMajorAxis() * 1000, end.getEccentricity(), end.getInclination(),
+                    end.getRaan(), end.getArgPeriapsis(), end.getTrueAnomaly(), epoch);
+
+                if (!"Orbital Elements".equals(end.getReferenceFrame())) {
+                    taResults.setText("Warning: end vehicle not in Orbital Elements frame.\nUsing current Keplerian values.");
+                }
+
+                String[] varyParams = new String[6];
+                double[][] bounds = new double[6][2];
+                int count = 0;
+                for (int i = 0; i < 6; i++) {
+                    if (paramChecks[i].isSelected()) {
+                        varyParams[count] = paramNames[i];
+                        TextField minField = paramMin[i][0];
+                        TextField maxField = paramMax[i][0];
+                        double dMin = defaultRanges[i][0];
+                        double dMax = defaultRanges[i][1];
+                        String pName = paramNames[i];
+                        double min = ErrorHandler.parseSafe(() -> Double.parseDouble(minField.getText()), dMin, "parse min " + pName);
+                        double max = ErrorHandler.parseSafe(() -> Double.parseDouble(maxField.getText()), dMax, "parse max " + pName);
+                        bounds[count][0] = Math.min(min, max);
+                        bounds[count][1] = Math.max(min, max);
+                        count++;
+                    }
+                }
+
+                if (count == 0) {
+                    taResults.setText("Select at least one parameter to vary.");
+                    return;
+                }
+
+                String[] activeNames = new String[count];
+                double[][] activeBounds = new double[count][2];
+                System.arraycopy(varyParams, 0, activeNames, 0, count);
+                System.arraycopy(bounds, 0, activeBounds, 0, count);
+
+                taResults.setText("Optimizing " + count + " parameter(s)...\n");
+
+                AbsoluteDate targetDate = epoch.shiftedBy(coastDuration);
+                OrekitService.TransferOptimizerResult result = physicsService.optimizeTransfer(
+                    startPoint, targetDate,
+                    endPoint, targetDate,
+                    activeNames, activeBounds, stepsPerParam);
+
+                bestHolder[0] = result;
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("Best total ΔV: ").append(String.format("%.1f", result.bestTotalDeltaV));
+                sb.append(" m/s\n");
+                sb.append("  Departure ΔV: ").append(String.format("%.1f", result.departureDeltaV)).append(" m/s\n");
+                sb.append("  Arrival ΔV:   ").append(String.format("%.1f", result.arrivalDeltaV)).append(" m/s\n");
+                sb.append("  Transfer duration: ").append(String.format("%.1f", result.transferDuration)).append(" s\n");
+                sb.append("\nBest parameters:\n");
+                String[] resultNames = {"SMA (km)", "Ecc", "Inc", "RAAN", "ArgP", "TA"};
+                int idx = 0;
+                for (int i = 0; i < 6; i++) {
+                    if (paramChecks[i].isSelected()) {
+                        sb.append(resultNames[i]).append(" = ").append(String.format("%.6f", result.bestParams[idx])).append("\n");
+                        idx++;
+                    }
+                }
+
+                taResults.setText(sb.toString());
+                btnApply.setDisable(false);
+            }, "optimize transfer");
+        });
+
+        btnApply.setOnAction(e -> {
+            if (bestHolder[0] == null) return;
+            Vehicle end = cbEnd.getValue();
+            int idx = 0;
+            for (int i = 0; i < 6; i++) {
+                if (paramChecks[i].isSelected()) {
+                    double val = bestHolder[0].bestParams[idx];
+                    switch (i) {
+                        case 0: end.setSemiMajorAxis(val); break;       // SMA in km
+                        case 1: end.setEccentricity(val); break;
+                        case 2: end.setInclination(val); break;
+                        case 3: end.setRaan(val); break;
+                        case 4: end.setArgPeriapsis(val); break;
+                        case 5: end.setTrueAnomaly(val); break;
+                    }
+                    idx++;
+                }
+            }
+            saveCurrentEvent();
+            dialog.close();
+            statusLabel.setText("Applied optimized parameters to Vehicle " + (vehicles.indexOf(end) + 1));
+        });
+
+        btnClose.setOnAction(e -> dialog.close());
+    }
+
+    @FXML
+    private void onComputeTransfer() {
+        List<Vehicle> vehicles = new ArrayList<>();
+        for (MissionEvent evt : events) {
+            if (evt instanceof Vehicle) vehicles.add((Vehicle) evt);
+        }
+        if (vehicles.size() < 2) {
+            ErrorHandler.info("Need at least 2 vehicles");
+            return;
+        }
+
+        AbsoluteDate epoch = parseEpoch();
+        errorCheck: {
+            // Build trajectory points for first and last vehicle
+            Vehicle firstWp = vehicles.get(0);
+            Vehicle lastWp = vehicles.get(vehicles.size() - 1);
+
+            // Re-run mission to get all trajectory segments
+            saveCurrentEvent();
+            List<List<TrajectoryPoint>> segments = new ArrayList<>();
+            List<CelestialBody> segmentBodies = new ArrayList<>();
+            TrajectoryPoint lastPoint = null;
+            CelestialBody currentBody = CelestialBody.EARTH;
+
+            try {
+                for (int i = 0; i < events.size(); i++) {
+                    MissionEvent event = events.get(i);
+                    if (event instanceof Vehicle) {
+                        Vehicle wp = (Vehicle) event;
+                        currentBody = wp.getCelestialBody();
+                        physicsService.setCelestialBody(currentBody);
+                        TrajectoryPoint point;
+                        switch (wp.getReferenceFrame()) {
+                            case "INERTIAL":
+                                point = physicsService.createTrajectoryPointFromInertial(
+                                    wp.getInertialX(), wp.getInertialY(), wp.getInertialZ(),
+                                    wp.getInertialVx(), wp.getInertialVy(), wp.getInertialVz(), epoch);
+                                break;
+                            case "ECEF":
+                                point = physicsService.createTrajectoryPointFromECEF(
+                                    wp.getEcefX(), wp.getEcefY(), wp.getEcefZ(),
+                                    wp.getEcefVx(), wp.getEcefVy(), wp.getEcefVz(), epoch);
+                                break;
+                            case "LLA":
+                                point = physicsService.createTrajectoryPointFromLLA(
+                                    wp.getLatitude(), wp.getLongitude(), wp.getAltitude(), epoch);
+                                break;
+                            default:
+                                point = physicsService.createTrajectoryPoint(
+                                    wp.getSemiMajorAxis() * 1000, wp.getEccentricity(), wp.getInclination(),
+                                    wp.getRaan(), wp.getArgPeriapsis(), wp.getTrueAnomaly(), epoch);
+                                break;
+                        }
+                        lastPoint = point;
+                    } else if (event instanceof Maneuver) {
+                        Maneuver m = (Maneuver) event;
+                        if (lastPoint != null) {
+                            lastPoint = physicsService.applyDeltaV(lastPoint, m.getdVx(), m.getdVy(), m.getdVz(), m.getReferenceFrame());
+                        }
+                    } else if (event instanceof Coast) {
+                        Coast c = (Coast) event;
+                        if (lastPoint != null) {
+                            int steps = Math.max(1, (int) (c.getDuration() / c.getStepSize()));
+                            List<TrajectoryPoint> coastTraj = physicsService.propagateWithCoast(lastPoint, c.getDuration(), steps);
+                            segments.add(coastTraj);
+                            segmentBodies.add(currentBody);
+                            lastPoint = coastTraj.get(coastTraj.size() - 1);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                ErrorHandler.error("Compute transfer: mission run failed", ex);
+                break errorCheck;
+            }
+
+            if (lastPoint == null) { ErrorHandler.info("No trajectory to compute transfer on"); break errorCheck; }
+
+            // Use first vehicle point and last propagated point
+            TrajectoryPoint from = physicsService.createTrajectoryPoint(
+                firstWp.getSemiMajorAxis() * 1000, firstWp.getEccentricity(), firstWp.getInclination(),
+                firstWp.getRaan(), firstWp.getArgPeriapsis(), firstWp.getTrueAnomaly(), epoch);
+            TrajectoryPoint to = lastPoint;
+
+            // Translate to inertial body centered for display
+            TrajectoryPoint fromCentered = from;
+            TrajectoryPoint toCentered = to;
+            CelestialBody firstBody = firstWp.getCelestialBody();
+            if (firstBody != inertialBody) {
+                List<TrajectoryPoint> translated = physicsService.translateToBodyCentered(
+                    List.of(from), firstBody, inertialBody);
+                fromCentered = translated.get(0);
+            }
+            if (segmentBodies.size() > 0) {
+                CelestialBody lastBody = segmentBodies.get(segmentBodies.size() - 1);
+                if (lastBody != inertialBody) {
+                    List<TrajectoryPoint> translated = physicsService.translateToBodyCentered(
+                        List.of(to), lastBody, inertialBody);
+                    toCentered = translated.get(0);
+                }
+            }
+
+            OrekitService.TransferBurnResult burn = physicsService.computeTransferBurn(fromCentered, toCentered);
+
+            statusLabel.setText(String.format("Transfer: ΔV dep=%.1f m/s, arr=%.1f m/s, dt=%.1f s",
+                burn.dVMagnitude, burn.arrivalDVMagnitude, burn.transferDuration));
+        }
+    }
+
+    @FXML
+    private void onRunAllVehicles() {
         try {
             saveCurrentEvent();
             AbsoluteDate epoch = parseEpoch();
@@ -679,8 +1125,8 @@ public class MainController {
             for (int i = 0; i < events.size(); i++) {
                 MissionEvent event = events.get(i);
 
-                if (event instanceof Waypoint) {
-                    Waypoint wp = (Waypoint) event;
+                if (event instanceof Vehicle) {
+                    Vehicle wp = (Vehicle) event;
                     currentBody = wp.getCelestialBody();
                     physicsService.setCelestialBody(currentBody);
                     TrajectoryPoint point;

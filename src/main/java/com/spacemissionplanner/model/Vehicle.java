@@ -1,6 +1,6 @@
 package com.spacemissionplanner.model;
 
-public class Waypoint extends MissionEvent {
+public class Vehicle extends MissionEvent {
     private CelestialBody celestialBody = CelestialBody.EARTH;
     private String referenceFrame = "ORBITAL_ELEMENTS";
 
@@ -19,7 +19,7 @@ public class Waypoint extends MissionEvent {
 
     private double latitude, longitude, altitude;
 
-    public Waypoint(String name) {
+    public Vehicle(String name) {
         super(name);
         this.semiMajorAxis = 6871;
         this.eccentricity = 0.0;
@@ -29,7 +29,7 @@ public class Waypoint extends MissionEvent {
         this.trueAnomaly = 0.0;
     }
 
-    public Waypoint(String name, double semiMajorAxis, double eccentricity,
+    public Vehicle(String name, double semiMajorAxis, double eccentricity,
                     double inclination, double raan, double argPeriapsis, double trueAnomaly) {
         super(name);
         this.semiMajorAxis = semiMajorAxis;

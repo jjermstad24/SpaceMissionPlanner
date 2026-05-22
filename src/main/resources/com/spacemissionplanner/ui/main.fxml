@@ -25,6 +25,9 @@
                     <SeparatorMenuItem/>
                     <MenuItem text="Run Selected" onAction="#onRunMission"/>
                     <MenuItem text="Run All" onAction="#onRunAllWaypoints"/>
+                    <SeparatorMenuItem/>
+                    <MenuItem text="Optimize Transfer..." onAction="#onOptimizeMeet"/>
+                    <MenuItem text="Compute Transfer..." onAction="#onComputeTransfer"/>
                 </Menu>
             </MenuBar>
             <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 5 10; -fx-background-color: #e0e0e0;">
@@ -46,14 +49,14 @@
                 <HBox spacing="5">
                     <MenuButton text="+ Add" style="-fx-font-weight: bold;">
                         <items>
-                            <MenuItem text="Waypoint" onAction="#onAddWaypoint"/>
+                            <MenuItem text="Vehicle" onAction="#onAddVehicle"/>
                             <MenuItem text="Maneuver" onAction="#onAddManeuver"/>
                             <MenuItem text="Coast" onAction="#onAddCoast"/>
                         </items>
                     </MenuButton>
-                    <Button text="- Remove" onAction="#onRemoveWaypoint"/>
+                    <Button text="- Remove" onAction="#onRemoveVehicle"/>
                 </HBox>
-                <Button text="Run All Events" onAction="#onRunAllWaypoints"
+                <Button text="Run All Events" onAction="#onRunAllVehicles"
                         style="-fx-font-weight: bold;"/>
             </VBox>
 
@@ -79,11 +82,11 @@
             <VBox fx:id="orbitInputPanel" managed="true" spacing="5">
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Frame:"/>
-                    <ComboBox fx:id="cbWaypointFrame" prefWidth="180"/>
+                    <ComboBox fx:id="cbVehicleFrame" prefWidth="180"/>
                 </HBox>
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Body:"/>
-                    <ComboBox fx:id="cbWaypointBody" prefWidth="120"/>
+                    <ComboBox fx:id="cbVehicleBody" prefWidth="120"/>
                 </HBox>
                 <GridPane hgap="10" vgap="5">
                     <Label fx:id="lblOrbit1" text="a (km):" GridPane.columnIndex="0" GridPane.rowIndex="0"/>

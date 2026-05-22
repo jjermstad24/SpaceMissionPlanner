@@ -29,12 +29,21 @@ import java.util.List;
 public class OrekitService {
 
     private final Frame inertialFrame;
+    private final Frame itrf;
+    private final java.util.Map<CelestialBody, OneAxisEllipsoid> ellipsoidCache = new java.util.HashMap<>();
     private CelestialBody body = CelestialBody.EARTH;
     private java.util.Set<CelestialBody> gravityEnabled = new java.util.HashSet<>();
+
+    private static final double MOON_A = 384400000;
+    private static final double MOON_PERIOD = 27.321661 * 86400;
+    private static final double MOON_N = 2 * Math.PI / MOON_PERIOD;
+    private static final double MOON_M0 = Math.toRadians(135.0);
+    private static final double MOON_I = Math.toRadians(23.44);
 
     public OrekitService() {
         this.inertialFrame = FramesFactory.getEME2000();
         configureDataLoading();
+        this.itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
         gravityEnabled.add(CelestialBody.EARTH);
         gravityEnabled.add(CelestialBody.MOON);
     }
@@ -100,7 +109,6 @@ public class OrekitService {
     public List<TrajectoryPoint> propagate(Orbit orbit, double durationSeconds, int steps) {
         Propagator propagator = createPropagator(orbit);
         List<TrajectoryPoint> points = new ArrayList<>();
-
         double stepSize = durationSeconds / steps;
         AbsoluteDate startDate = orbit.getDate();
 
@@ -199,7 +207,6 @@ public class OrekitService {
                                                           double vxKmS, double vyKmS, double vzKmS,
                                                           AbsoluteDate date) {
         try {
-            Frame itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
             AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
             Transform t = itrf.getTransformTo(inertialFrame, d);
             PVCoordinates pvECEF = new PVCoordinates(
@@ -228,8 +235,8 @@ public class OrekitService {
 
     public TrajectoryPoint createTrajectoryPointFromLLA(double latDeg, double lonDeg, double altKm, AbsoluteDate date) {
         try {
-            Frame itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, true);
-            OneAxisEllipsoid bodyEllipsoid = new OneAxisEllipsoid(body.getEllipsoidA(), body.getFlattening(), itrf);
+            OneAxisEllipsoid bodyEllipsoid = ellipsoidCache.computeIfAbsent(body,
+                b -> new OneAxisEllipsoid(b.getEllipsoidA(), b.getFlattening(), itrf));
             AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
             GeodeticPoint geo = new GeodeticPoint(Math.toRadians(latDeg), Math.toRadians(lonDeg), altKm * 1000);
             Vector3D posECEF = bodyEllipsoid.transform(geo);
@@ -301,12 +308,13 @@ public class OrekitService {
 
     public List<TrajectoryPoint> propagateArc(TrajectoryPoint start, double durationSeconds, int steps) {
         List<TrajectoryPoint> points = new ArrayList<>();
+        double gm = getEffectiveGm();
         Orbit startOrbit = new CartesianOrbit(
             new PVCoordinates(
                 new Vector3D(start.x, start.y, start.z),
                 new Vector3D(start.vx, start.vy, start.vz)
             ),
-            inertialFrame, start.date, getEffectiveGm()
+            inertialFrame, start.date, gm
         );
         Propagator propagator = createPropagator(startOrbit);
         double stepSize = durationSeconds / steps;
@@ -324,12 +332,13 @@ public class OrekitService {
     }
 
     public TrajectoryPoint propagateToDate(TrajectoryPoint start, AbsoluteDate targetDate) {
+        double gm = getEffectiveGm();
         Orbit startOrbit = new CartesianOrbit(
             new PVCoordinates(
                 new Vector3D(start.x, start.y, start.z),
                 new Vector3D(start.vx, start.vy, start.vz)
             ),
-            inertialFrame, start.date, getEffectiveGm()
+            inertialFrame, start.date, gm
         );
         Propagator propagator = createPropagator(startOrbit);
         SpacecraftState state = propagator.propagate(targetDate);
@@ -374,6 +383,218 @@ public class OrekitService {
         return new MeetResult(forwardEnd, backwardEnd);
     }
 
+    public static class TransferOptimizerResult {
+        public final double[] bestParams;
+        public final double bestTotalDeltaV;
+        public final double departureDeltaV;
+        public final double arrivalDeltaV;
+        public final double transferDuration;
+
+        public TransferOptimizerResult(double[] bestParams, double bestTotalDeltaV,
+                                        double departureDeltaV, double arrivalDeltaV,
+                                        double transferDuration) {
+            this.bestParams = bestParams;
+            this.bestTotalDeltaV = bestTotalDeltaV;
+            this.departureDeltaV = departureDeltaV;
+            this.arrivalDeltaV = arrivalDeltaV;
+            this.transferDuration = transferDuration;
+        }
+    }
+
+    public TransferOptimizerResult optimizeTransfer(TrajectoryPoint startPoint, AbsoluteDate startDate,
+                                                     TrajectoryPoint endPoint, AbsoluteDate endDate,
+                                                     String[] varyParams, double[][] paramBounds,
+                                                     int stepsPerParam) {
+        double[] best = new double[varyParams.length];
+        double bestTotalDV = Double.MAX_VALUE;
+        double bestDepDV = 0, bestArrDV = 0, bestDuration = 0;
+
+        int totalSteps = (int) Math.pow(stepsPerParam + 1, varyParams.length);
+        for (int s = 0; s < totalSteps; s++) {
+            double[] current = new double[varyParams.length];
+            int tmp = s;
+            for (int i = 0; i < varyParams.length; i++) {
+                double range = paramBounds[i][1] - paramBounds[i][0];
+                current[i] = paramBounds[i][0] + range * (tmp % (stepsPerParam + 1)) / stepsPerParam;
+                tmp /= (stepsPerParam + 1);
+            }
+
+            // Create modified end point (first 6 params = Keplerian elements)
+            Orbit orbit = new KeplerianOrbit(
+                current[0] * 1000,
+                current[1],
+                current[2],
+                current[3],
+                current[4],
+                current[5],
+                PositionAngleType.TRUE,
+                inertialFrame,
+                endPoint.date,
+                getEffectiveGm()
+            );
+            PVCoordinates pv = orbit.getPVCoordinates();
+            TrajectoryPoint modifiedEnd = new TrajectoryPoint(endPoint.date,
+                pv.getPosition().getX(), pv.getPosition().getY(), pv.getPosition().getZ(),
+                pv.getVelocity().getX(), pv.getVelocity().getY(), pv.getVelocity().getZ());
+
+            // Propagate start and modified end to meet time
+            TrajectoryPoint startAtMeet = propagateToDate(startPoint, startDate);
+            TrajectoryPoint endAtMeet = propagateToDate(modifiedEnd, endDate);
+
+            // Use Lambert solver to compute the delta-V for this transfer
+            TransferBurnResult burn = computeTransferBurn(startAtMeet, endAtMeet);
+            double totalDV = burn.dVMagnitude + burn.arrivalDVMagnitude;
+
+            if (totalDV < bestTotalDV) {
+                bestTotalDV = totalDV;
+                bestDepDV = burn.dVMagnitude;
+                bestArrDV = burn.arrivalDVMagnitude;
+                bestDuration = burn.transferDuration;
+                System.arraycopy(current, 0, best, 0, current.length);
+            }
+        }
+
+        return new TransferOptimizerResult(best, bestTotalDV, bestDepDV, bestArrDV, bestDuration);
+    }
+
+    // --- Transfer burn (Lambert solver) ---
+
+    public static class TransferBurnResult {
+        public final double dVx, dVy, dVz;
+        public final double dVMagnitude;
+        public final double arrivalDVx, arrivalDVy, arrivalDVz;
+        public final double arrivalDVMagnitude;
+        public final double transferDuration;
+
+        public TransferBurnResult(Vector3D v1Current, Vector3D v1Transfer,
+                                  Vector3D v2Current, Vector3D v2Transfer,
+                                  double transferDuration) {
+            Vector3D dV1 = v1Transfer.subtract(v1Current);
+            Vector3D dV2 = v2Transfer.subtract(v2Current);
+            this.dVx = dV1.getX(); this.dVy = dV1.getY(); this.dVz = dV1.getZ();
+            this.dVMagnitude = dV1.getNorm();
+            this.arrivalDVx = dV2.getX(); this.arrivalDVy = dV2.getY(); this.arrivalDVz = dV2.getZ();
+            this.arrivalDVMagnitude = dV2.getNorm();
+            this.transferDuration = transferDuration;
+        }
+    }
+
+    private static double[] stumpff(double z) {
+        double C, S;
+        if (Math.abs(z) < 1e-8) {
+            C = 0.5 - z / 24.0 + z * z / 720.0;
+            S = 1.0 / 6.0 - z / 120.0 + z * z / 5040.0;
+        } else if (z > 0) {
+            double sqrtZ = Math.sqrt(z);
+            C = (1 - Math.cos(sqrtZ)) / z;
+            S = (sqrtZ - Math.sin(sqrtZ)) / (z * sqrtZ);
+        } else {
+            double sqrtNegZ = Math.sqrt(-z);
+            C = (Math.cosh(sqrtNegZ) - 1) / (-z);
+            S = (Math.sinh(sqrtNegZ) - sqrtNegZ) / (-z * sqrtNegZ);
+        }
+        return new double[]{C, S};
+    }
+
+    public TransferBurnResult computeTransferBurn(TrajectoryPoint from, TrajectoryPoint to) {
+        double dt = to.date.durationFrom(from.date);
+        double absDt = Math.abs(dt);
+        double gm = getEffectiveGm();
+
+        Vector3D r1 = new Vector3D(from.x, from.y, from.z);
+        Vector3D r2 = new Vector3D(to.x, to.y, to.z);
+        Vector3D v1Current = new Vector3D(from.vx, from.vy, from.vz);
+        Vector3D v2Current = new Vector3D(to.vx, to.vy, to.vz);
+
+        double r1Mag = r1.getNorm();
+        double r2Mag = r2.getNorm();
+
+        if (absDt < 1e-6) {
+            return new TransferBurnResult(v1Current, v2Current, v2Current, v1Current, absDt);
+        }
+
+        // Transfer angle
+        double cosDeltaNu = r1.dotProduct(r2) / (r1Mag * r2Mag);
+        cosDeltaNu = Math.max(-1.0, Math.min(1.0, cosDeltaNu));
+        double deltaNu = Math.acos(cosDeltaNu);
+
+        // Determine short way / long way from angular momentum direction
+        Vector3D h1 = r1.crossProduct(v1Current);
+        Vector3D cross = r1.crossProduct(r2);
+        boolean longWay = cross.dotProduct(h1) < 0;
+
+        if (longWay) {
+            deltaNu = 2 * Math.PI - deltaNu;
+        }
+
+        double sinDeltaNu = Math.sin(deltaNu);
+        double A = sinDeltaNu * Math.sqrt(r1Mag * r2Mag / (1.0 - Math.cos(deltaNu)));
+
+        // Solve universal variable z via Newton iteration
+        double z = 0.0;
+        double tol = 1e-12;
+        int maxIter = 1000;
+
+        for (int iter = 0; iter < maxIter; iter++) {
+            double[] ss = stumpff(z);
+            double C = ss[0];
+            double S = ss[1];
+
+            if (C <= 1e-12) {
+                z += 0.1;
+                continue;
+            }
+
+            double sqrtC = Math.sqrt(C);
+            double y = r1Mag + r2Mag + A * (z * S - 1.0) / sqrtC;
+
+            if (y < 0) {
+                z += 0.1;
+                continue;
+            }
+
+            double sqrtY = Math.sqrt(y);
+            double x = sqrtY / sqrtC;
+            double t = (x * x * x * S + A * sqrtY) / Math.sqrt(gm);
+
+            double f = 1.0 - y / r1Mag;
+            double g = A * sqrtY / Math.sqrt(gm);
+            double gDot = 1.0 - y / r2Mag;
+
+            double residual = t - absDt;
+            if (Math.abs(residual) < tol || Math.abs(g) < 1e-15) {
+                if (Math.abs(g) < 1e-15) {
+                    break; // singular transfer
+                }
+                Vector3D v1Transfer = r2.subtract(r1.scalarMultiply(f)).scalarMultiply(1.0 / g);
+                Vector3D v2Transfer = r2.scalarMultiply(gDot).subtract(r1).scalarMultiply(1.0 / g);
+                return new TransferBurnResult(v1Current, v1Transfer, v2Current, v2Transfer, absDt);
+            }
+
+            // Finite difference Newton step
+            double dz = 1e-8;
+            double[] ss2 = stumpff(z + dz);
+            double C2 = ss2[0];
+            double S2 = ss2[1];
+            double sqrtC2 = Math.sqrt(C2);
+            double y2 = r1Mag + r2Mag + A * ((z + dz) * S2 - 1.0) / sqrtC2;
+            double sqrtY2 = Math.sqrt(Math.max(0, y2));
+            double x2 = sqrtY2 / sqrtC2;
+            double t2 = (x2 * x2 * x2 * S2 + A * sqrtY2) / Math.sqrt(gm);
+            double dtdz = (t2 - t) / dz;
+
+            if (Math.abs(dtdz) < 1e-20) {
+                z += 0.1;
+                continue;
+            }
+
+            z = z - residual / dtdz;
+        }
+
+        // Fallback: return simple velocity difference
+        return new TransferBurnResult(v1Current, v2Current, v2Current, v1Current, absDt);
+    }
+
     public Vector3D getMoonPosition(AbsoluteDate date) {
         AbsoluteDate d = date != null ? date : AbsoluteDate.J2000_EPOCH;
         try {
@@ -386,18 +607,13 @@ public class OrekitService {
     }
 
     private Vector3D computeAnalyticMoonPosition(AbsoluteDate d) {
-        double a = 384400000;
-        double period = 27.321661 * 86400;
-        double n = 2 * Math.PI / period;
-        double m0 = Math.toRadians(135.0);
-        double m = m0 + n * d.durationFrom(AbsoluteDate.J2000_EPOCH);
-        double i = Math.toRadians(23.44);
+        double m = MOON_M0 + MOON_N * d.durationFrom(AbsoluteDate.J2000_EPOCH);
         double cosM = Math.cos(m);
         double sinM = Math.sin(m);
         return new Vector3D(
-            a * cosM,
-            a * sinM * Math.cos(i),
-            a * sinM * Math.sin(i)
+            MOON_A * cosM,
+            MOON_A * sinM * Math.cos(MOON_I),
+            MOON_A * sinM * Math.sin(MOON_I)
         );
     }
 
@@ -450,21 +666,20 @@ public class OrekitService {
     public List<TrajectoryPoint> getCelestialBodyTrajectory(CelestialBody body, AbsoluteDate start, double durationSeconds, int steps) {
         List<TrajectoryPoint> points = new ArrayList<>();
         double stepSize = durationSeconds / steps;
-        for (int i = 0; i <= steps; i++) {
-            AbsoluteDate d = start.shiftedBy(i * stepSize);
-            double x, y, z;
-            if (body == CelestialBody.MOON) {
+        if (body == CelestialBody.EARTH) {
+            for (int i = 0; i <= steps; i++) {
+                AbsoluteDate d = start.shiftedBy(i * stepSize);
                 Vector3D moonPos = getMoonPosition(d);
-                x = moonPos.getX();
-                y = moonPos.getY();
-                z = moonPos.getZ();
-            } else {
-                Vector3D moonPos = getMoonPosition(d);
-                x = -moonPos.getX();
-                y = -moonPos.getY();
-                z = -moonPos.getZ();
+                points.add(new TrajectoryPoint(d,
+                    -moonPos.getX(), -moonPos.getY(), -moonPos.getZ(), 0, 0, 0));
             }
-            points.add(new TrajectoryPoint(d, x, y, z, 0, 0, 0));
+        } else {
+            for (int i = 0; i <= steps; i++) {
+                AbsoluteDate d = start.shiftedBy(i * stepSize);
+                Vector3D pos = getMoonPosition(d);
+                points.add(new TrajectoryPoint(d,
+                    pos.getX(), pos.getY(), pos.getZ(), 0, 0, 0));
+            }
         }
         return points;
     }

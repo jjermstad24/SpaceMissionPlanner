@@ -37,6 +37,7 @@ public class Viewer3D extends VBox {
 
     private static final double EARTH_RADIUS_M = 6371000.0;
     private static final double VISUAL_SCALE = 1.0 / EARTH_RADIUS_M;
+    private static final Point3D Z_AXIS = new Point3D(0, 0, 1);
 
     private CelestialBody currentBody = CelestialBody.EARTH;
     private double bodyRadiusM = EARTH_RADIUS_M;
@@ -60,20 +61,23 @@ public class Viewer3D extends VBox {
     private String target = "earth";
 
     private Group cameraPivot;
-    private Point3D targetPosition = new Point3D(0, 0, 0);
-    private Point3D currentTargetPos = new Point3D(0, 0, 0);
+    private double targetTx, targetTy, targetTz;
+    private double curTx, curTy, curTz;
 
     private List<TrajectoryPoint> trajectory;
+    private List<TrajectoryPoint> cachedMoonPositions;
     private List<List<TrajectoryPoint>> groups = new ArrayList<>();
     private List<Color> groupColors = new ArrayList<>();
     private int currentIndex = 0;
     private long lastUpdateTime = 0;
     private static final long UPDATE_INTERVAL_MS = 50;
+    private long playbackIntervalNs = (long)(UPDATE_INTERVAL_MS * 1_000_000);
     private OrekitService orekitService;
     private boolean isPlaying = true;
     private double playbackSpeed = 1.0;
     private Slider timelineSlider;
     private boolean scrubbing = false;
+    private CelestialBody coordOrigin = CelestialBody.EARTH;
 
     public Viewer3D() {
         setFillWidth(true);
@@ -101,14 +105,12 @@ public class Viewer3D extends VBox {
         cameraPivot.getTransforms().setAll(cameraOrient);
 
         double lerpFactor = 0.15;
-        currentTargetPos = new Point3D(
-            currentTargetPos.getX() + (targetPosition.getX() - currentTargetPos.getX()) * lerpFactor,
-            currentTargetPos.getY() + (targetPosition.getY() - currentTargetPos.getY()) * lerpFactor,
-            currentTargetPos.getZ() + (targetPosition.getZ() - currentTargetPos.getZ()) * lerpFactor
-        );
-        cameraPivot.setTranslateX(currentTargetPos.getX());
-        cameraPivot.setTranslateY(currentTargetPos.getY());
-        cameraPivot.setTranslateZ(currentTargetPos.getZ());
+        curTx += (targetTx - curTx) * lerpFactor;
+        curTy += (targetTy - curTy) * lerpFactor;
+        curTz += (targetTz - curTz) * lerpFactor;
+        cameraPivot.setTranslateX(curTx);
+        cameraPivot.setTranslateY(curTy);
+        cameraPivot.setTranslateZ(curTz);
     }
 
     public void setTarget(String target) {
@@ -122,21 +124,21 @@ public class Viewer3D extends VBox {
             case "spacecraft":
                 if (trajectory != null && !trajectory.isEmpty()) {
                     TrajectoryPoint p = trajectory.get(currentIndex);
-                    targetPosition = new Point3D(p.x * visualScale, p.z * visualScale, p.y * visualScale);
+                    targetTx = p.x * visualScale;
+                    targetTy = p.z * visualScale;
+                    targetTz = p.y * visualScale;
                 }
                 break;
             case "moon":
                 if (moonGroup != null) {
-                    targetPosition = new Point3D(
-                        moonGroup.getTranslateX(),
-                        moonGroup.getTranslateY(),
-                        moonGroup.getTranslateZ()
-                    );
+                    targetTx = moonGroup.getTranslateX();
+                    targetTy = moonGroup.getTranslateY();
+                    targetTz = moonGroup.getTranslateZ();
                 }
                 break;
             case "earth":
             default:
-                targetPosition = new Point3D(0, 0, 0);
+                targetTx = targetTy = targetTz = 0;
                 break;
         }
     }
@@ -229,6 +231,10 @@ public class Viewer3D extends VBox {
         this.orekitService = service;
     }
 
+    public void setCoordOrigin(CelestialBody body) {
+        this.coordOrigin = body;
+    }
+
     public void setEarthVisible(boolean visible) {
         if (earthGroup != null) earthGroup.setVisible(visible);
     }
@@ -250,10 +256,22 @@ public class Viewer3D extends VBox {
     }
 
     public void setMoonPosition(org.hipparchus.geometry.euclidean.threed.Vector3D posEME2000) {
-        if (posEME2000 != null && moonGroup != null) {
-            moonGroup.setTranslateX(posEME2000.getX() * visualScale);
-            moonGroup.setTranslateY(posEME2000.getZ() * visualScale);
-            moonGroup.setTranslateZ(posEME2000.getY() * visualScale);
+        if (posEME2000 != null && moonGroup != null && earthGroup != null) {
+            if (coordOrigin == CelestialBody.MOON) {
+                moonGroup.setTranslateX(0);
+                moonGroup.setTranslateY(0);
+                moonGroup.setTranslateZ(0);
+                earthGroup.setTranslateX(-posEME2000.getX() * visualScale);
+                earthGroup.setTranslateY(-posEME2000.getZ() * visualScale);
+                earthGroup.setTranslateZ(-posEME2000.getY() * visualScale);
+            } else {
+                moonGroup.setTranslateX(posEME2000.getX() * visualScale);
+                moonGroup.setTranslateY(posEME2000.getZ() * visualScale);
+                moonGroup.setTranslateZ(posEME2000.getY() * visualScale);
+                earthGroup.setTranslateX(0);
+                earthGroup.setTranslateY(0);
+                earthGroup.setTranslateZ(0);
+            }
         }
     }
 
@@ -464,10 +482,9 @@ public class Viewer3D extends VBox {
             seg.setTranslateY((y1 + y2) / 2);
             seg.setTranslateZ((z1 + z2) / 2);
             Point3D dir = new Point3D(dx / len, dy / len, dz / len);
-            Point3D zAxis = new Point3D(0, 0, 1);
-            double dot = zAxis.dotProduct(dir);
+            double dot = dir.getZ();
             if (dot < 0.9999) {
-                seg.setRotationAxis(zAxis.crossProduct(dir));
+                seg.setRotationAxis(Z_AXIS.crossProduct(dir));
                 seg.setRotate(Math.toDegrees(Math.acos(dot)));
             }
             group.getChildren().add(seg);
@@ -501,6 +518,21 @@ public class Viewer3D extends VBox {
         }
         this.trajectory = flat;
         this.currentIndex = 0;
+
+        // Pre-cache moon positions for smooth animation
+        if (orekitService != null && flat != null && !flat.isEmpty()) {
+            cachedMoonPositions = new ArrayList<>(flat.size());
+            for (TrajectoryPoint p : flat) {
+                if (p.date != null) {
+                    org.hipparchus.geometry.euclidean.threed.Vector3D moonPos = orekitService.getMoonPosition(p.date);
+                    cachedMoonPositions.add(new TrajectoryPoint(p.date, moonPos.getX(), moonPos.getY(), moonPos.getZ(), 0, 0, 0));
+                } else {
+                    cachedMoonPositions.add(null);
+                }
+            }
+        } else {
+            cachedMoonPositions = null;
+        }
 
         if (timelineSlider != null && trajectory != null && !trajectory.isEmpty()) {
             timelineSlider.setMax(trajectory.size() - 1);
@@ -582,10 +614,9 @@ public class Viewer3D extends VBox {
 
         double dlen = length;
         Point3D dir = new Point3D(dx / dlen, dy / dlen, dz / dlen);
-        Point3D zAxis = new Point3D(0, 0, 1);
-        double dot = zAxis.dotProduct(dir);
+        double dot = dir.getZ();
         if (dot < 0.9999) {
-            Point3D rotAxis = zAxis.crossProduct(dir);
+            Point3D rotAxis = Z_AXIS.crossProduct(dir);
             double angle = Math.toDegrees(Math.acos(dot));
             line.setRotationAxis(rotAxis);
             line.setRotate(angle);
@@ -623,21 +654,19 @@ public class Viewer3D extends VBox {
             @Override
             public void handle(long now) {
                 if (trajectory != null && trajectory.size() > 0) {
-                    double intervalMs = UPDATE_INTERVAL_MS / playbackSpeed;
-                    if (isPlaying && now - lastUpdateTime > intervalMs * 1_000_000) {
+                    if (isPlaying && now - lastUpdateTime > playbackIntervalNs) {
                         updateSpacecraftPosition();
-                        currentIndex = (currentIndex + 1) % trajectory.size();
+                        currentIndex++;
+                        if (currentIndex >= trajectory.size()) currentIndex = 0;
                         lastUpdateTime = now;
 
                         if (!scrubbing && timelineSlider != null) {
                             timelineSlider.setValue(currentIndex);
                         }
 
-                        TrajectoryPoint p = trajectory.get(currentIndex);
-                        if (orekitService != null && p.date != null) {
-                            ErrorHandler.runSafeSilent(() ->
-                                setMoonPosition(orekitService.getMoonPosition(p.date))
-                            );
+                        if (cachedMoonPositions != null && currentIndex < cachedMoonPositions.size()) {
+                            TrajectoryPoint mp = cachedMoonPositions.get(currentIndex);
+                            setMoonPosition(new org.hipparchus.geometry.euclidean.threed.Vector3D(mp.x, mp.y, mp.z));
                         }
                     }
                 }
@@ -674,11 +703,11 @@ public class Viewer3D extends VBox {
             if (trajectory != null && !trajectory.isEmpty()) {
                 currentIndex = Math.max(0, Math.min(trajectory.size() - 1, (int) (timelineSlider.getValue())));
                 updateSpacecraftPosition();
-                TrajectoryPoint p = trajectory.get(currentIndex);
-                if (orekitService != null && p.date != null) {
-                    ErrorHandler.runSafeSilent(() ->
-                        setMoonPosition(orekitService.getMoonPosition(p.date))
-                    );
+                if (cachedMoonPositions != null && currentIndex < cachedMoonPositions.size()) {
+                    TrajectoryPoint mp = cachedMoonPositions.get(currentIndex);
+                    if (mp != null) {
+                        setMoonPosition(new org.hipparchus.geometry.euclidean.threed.Vector3D(mp.x, mp.y, mp.z));
+                    }
                 }
             }
         });
@@ -694,6 +723,7 @@ public class Viewer3D extends VBox {
         speedSlider.setStyle("-fx-control-inner-background: #445;");
         speedSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             playbackSpeed = newVal.doubleValue();
+            playbackIntervalNs = (long)(UPDATE_INTERVAL_MS / playbackSpeed * 1_000_000);
         });
 
         javafx.scene.control.Label speedLabel = new javafx.scene.control.Label("1.0x");
